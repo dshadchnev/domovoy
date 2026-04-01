@@ -1,7 +1,10 @@
 {
   "ExpandedNodes": [
-    ""
+    "",
+    "\\docs",
+    "\\docs\\domain",
+    "\\docs\\domain\\sensor"
   ],
-  "SelectedNode": "\\C:\\Users\\Nodar\\Source\\Repos\\domovoy",
+  "SelectedNode": "\\docs\\domain\\sensor\\ERD.md",
   "PreviewInSolutionExplorer": false
 }
