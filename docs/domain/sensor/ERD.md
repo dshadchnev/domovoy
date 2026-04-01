@@ -1,4 +1,5 @@
 ﻿```mermaid
+
 erDiagram
 DeviceCategory ||--|{ Sensor : ""
 SensorType ||--|{ Sensor : ""
@@ -29,4 +30,5 @@ DevicePowerSupplyType ||--|{ Sensor : ""
         int idDevicePowerSupplyType "🔗"
         boolean isEndDevice
         json settings
-    }```
+    }
+```
