@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.37012.4
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Domovoy.API", "Domovoy.API\Domovoy.API.csproj", "{63ACBC79-1FE7-40B9-A070-3D47C11A67E3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Domovoy.Domain", "Domovoy.Domain\Domovoy.Domain.csproj", "{EBB443EA-8F3D-4E0D-A54C-D6B188C2F060}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{63ACBC79-1FE7-40B9-A070-3D47C11A67E3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{63ACBC79-1FE7-40B9-A070-3D47C11A67E3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{63ACBC79-1FE7-40B9-A070-3D47C11A67E3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{63ACBC79-1FE7-40B9-A070-3D47C11A67E3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EBB443EA-8F3D-4E0D-A54C-D6B188C2F060}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EBB443EA-8F3D-4E0D-A54C-D6B188C2F060}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EBB443EA-8F3D-4E0D-A54C-D6B188C2F060}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EBB443EA-8F3D-4E0D-A54C-D6B188C2F060}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {A5E7003B-A43D-44B6-91BD-B3950DD3285F}
+	EndGlobalSection
+EndGlobal
