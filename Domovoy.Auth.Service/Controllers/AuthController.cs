@@ -39,6 +39,7 @@ public class AuthController : ControllerBase
     [HttpPost("token", Name = "TokenEndpoint")]
     [Route("/connect/token")]
     [Produces("application/json")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public async Task<IActionResult> TokenEndpoint()
     {
         var logger = HttpContext.RequestServices.GetRequiredService<ILogger<AuthController>>();

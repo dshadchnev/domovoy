@@ -73,6 +73,11 @@ builder.Services.AddOpenIddict()
     })
     .AddServer(opts =>
     {
+        // Фиксированный Issuer — не зависит от хоста запроса (важно для работы через Gateway/Docker)
+        var issuer = builder.Configuration["OpenIddict:Issuer"];
+        if (!string.IsNullOrWhiteSpace(issuer))
+            opts.SetIssuer(new Uri(issuer));
+
         opts.SetTokenEndpointUris("/connect/token")
             .AllowPasswordFlow()
             .AllowRefreshTokenFlow();
@@ -91,6 +96,8 @@ builder.Services.AddOpenIddict()
         opts.UseAspNetCore()
             .EnableTokenEndpointPassthrough()
             .DisableTransportSecurityRequirement();
+        
+        opts.SetIntrospectionEndpointUris("/connect/introspect");
     })
     .AddValidation(opts =>
     {
@@ -100,23 +107,21 @@ builder.Services.AddOpenIddict()
 
 builder.Services.AddScoped<OpenIddictServerEventHandlers>();
 
-// 🔑 3. JWT Authentication (если другие сервисы будут валидировать токены)
+// 🔑 3. JWT Authentication — валидация токенов от /api/Auth/login
 var jwtSecret = builder.Configuration["Jwt:Secret"] ?? throw new InvalidOperationException("Jwt:Secret not configured");
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(opts => 
+    .AddJwtBearer(opts =>
     {
         opts.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
-            ValidateAudience = true,
+            ValidateAudience = false,   // audience разная у user/device токенов
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
+            ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "domovoy",
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
         };
     });
-
 builder.Services.AddAuthorization();
 
 // 🔑 4. MassTransit (RabbitMQ)
@@ -147,14 +152,27 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new() { Title = "Domovoy Auth Service", Version = "v1" });
+    c.SwaggerDoc("v1", new()
+    {
+        Title = "Domovoy Auth Service",
+        Version = "v1",
+        Description = "API аутентификации и авторизации сервиса Domovoy"
+    });
+
+    // Подключаем XML-комментарии
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+        c.IncludeXmlComments(xmlPath);
+
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT: 'Bearer {token}'",
+        Description = "Введите JWT токен (без слова Bearer)",
         Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
-        Scheme = "Bearer"
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
     });
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {

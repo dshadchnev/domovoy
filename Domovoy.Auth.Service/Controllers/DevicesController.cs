@@ -1,15 +1,18 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using Domovoy.Auth.Service.Contracts;
 using Domovoy.Auth.Service.Services;
+using OpenIddict.Abstractions;
+
 
 namespace Domovoy.Auth.Service.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 [Produces("application/json")]
-[Authorize]
+[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
 public class DevicesController : ControllerBase
 {
     private readonly IDeviceAuthService _deviceAuthService;
@@ -107,7 +110,11 @@ public class DevicesController : ControllerBase
 
     private Guid GetUserId()
     {
-        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        // OpenIddict использует ClaimTypes.NameIdentifier по умолчанию,
+        // но также может использовать OpenIddictConstants.Claims.Subject
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                       ?? User.FindFirstValue(OpenIddictConstants.Claims.Subject);
+
         if (!Guid.TryParse(userIdClaim, out var userId))
             throw new UnauthorizedAccessException("Invalid user context");
         return userId;
