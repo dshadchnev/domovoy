@@ -122,7 +122,14 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
         };
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    var defaultPolicyBuilder = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder(
+        JwtBearerDefaults.AuthenticationScheme,
+        OpenIddict.Validation.AspNetCore.OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
+    defaultPolicyBuilder = defaultPolicyBuilder.RequireAuthenticatedUser();
+    options.DefaultPolicy = defaultPolicyBuilder.Build();
+});
 
 // 🔑 4. MassTransit (RabbitMQ)
 builder.Services.AddMassTransit(x =>
@@ -270,3 +277,4 @@ static X509Certificate2 LoadOrCreateCertificate(string certificatePath, string c
         certificatePassword,
         X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable);
 }
+
