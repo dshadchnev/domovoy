@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MassTransit.RabbitMQ" Version="9.1.0" />
+    <PackageReference Include="MassTransit.RabbitMQ" Version="8.2.3" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.3" />
     <PackageReference Include="OpenIddict.Validation.AspNetCore" Version="7.5.0" />
     <PackageReference Include="StackExchange.Redis" Version="2.12.14" />

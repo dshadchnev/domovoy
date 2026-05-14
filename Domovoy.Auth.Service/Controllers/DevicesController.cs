@@ -6,6 +6,9 @@ using System.Security.Claims;
 using Domovoy.Auth.Service.Contracts;
 using Domovoy.Auth.Service.Services;
 using OpenIddict.Abstractions;
+using System.Text.Json;
+using MassTransit;
+using Domovoy.Shared.Events;
 
 
 namespace Domovoy.Auth.Service.Controllers;
@@ -18,11 +21,13 @@ public class DevicesController : ControllerBase
 {
     private readonly IDeviceAuthService _deviceAuthService;
     private readonly ILogger<DevicesController> _logger;
+    private readonly IPublishEndpoint _bus;
 
-    public DevicesController(IDeviceAuthService deviceAuthService, ILogger<DevicesController> logger)
+    public DevicesController(IDeviceAuthService deviceAuthService, ILogger<DevicesController> logger, IPublishEndpoint bus)
     {
         _deviceAuthService = deviceAuthService;
         _logger = logger;
+        _bus = bus;
     }
 
     /// <summary>
@@ -127,6 +132,27 @@ public class DevicesController : ControllerBase
             deviceId = deviceId,
             timestamp = DateTime.UtcNow
         });
+    }
+
+    [HttpPost("{id}/telemetry")]
+    [Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ReceiveTelemetry(string id, [FromBody] JsonElement telemetry)
+    {
+        var tokenDeviceId = User.FindFirstValue("DeviceId")
+                          ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (tokenDeviceId != id)
+        {
+            _logger.LogWarning("⚠️ Device ID mismatch. URL: {UrlId}, Token: {TokenId}", id, tokenDeviceId);
+            return Forbid();
+        }
+
+        _logger.LogInformation("📡 Telemetry received from {DeviceId}", id);
+
+        await _bus.Publish(new TelemetryReceivedEvent(id, telemetry.GetRawText(), DateTime.UtcNow));
+
+        return Ok(new { status = "accepted", timestamp = DateTime.UtcNow });
     }
 
     private Guid GetUserId()

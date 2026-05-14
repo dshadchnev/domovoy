@@ -1,50 +1,41 @@
 using System;
 using System.IO;
-using System.Linq;
 using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using OpenIddict.Abstractions;
-using OpenIddict.Server;
 using OpenIddict.Server.AspNetCore;
-using Domovoy.Auth.Service;
+using OpenIddict.Validation.AspNetCore;
 using Domovoy.Auth.Service.Data;
-using Domovoy.Auth.Service.Services;
 using Domovoy.Auth.Service.Data.Entities;
+using Domovoy.Auth.Service.Services;
 using MassTransit;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"] ?? "/var/domovoy/dataprotection";
-var certificatePath = builder.Configuration["Certificates:Path"] ?? "/var/domovoy/certs/openiddict.pfx";
-var certificatePassword = builder.Configuration["Certificates:Password"];
-var certificateSubject = builder.Configuration["Certificates:Subject"] ?? "CN=Domovoy Auth";
+// Note: не переключаем среду принудительно — используем реальный ASPNETCORE_ENVIRONMENT
 
-X509Certificate2? serviceCertificate = null;
-
-var dataProtectionBuilder = builder.Services
-    .AddDataProtection()
+// 🔑 1. DataProtection (кроссплатформенный путь: работает и в Windows, и в Linux/Docker)
+var dpKeysPath = Path.Combine(Path.GetTempPath(), "domovoy-dataprotection");
+builder.Services.AddDataProtection()
     .SetApplicationName("Domovoy.Auth.Service")
-    .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
+    .PersistKeysToFileSystem(new DirectoryInfo(dpKeysPath));
 
-// 🔑 1. EF Core + PostgreSQL
+// 🔑 2. EF Core + PostgreSQL
 builder.Services.AddDbContext<AuthDbContext>(opts =>
 {
     opts.UseNpgsql(builder.Configuration.GetConnectionString("Default"));
     opts.UseOpenIddict<Guid>();
 });
 
-// 🔑 2. Identity + OpenIddict
+// 🔑 3. Identity + OpenIddict
 builder.Services.AddIdentity<AuthUser, AuthRole>(opts =>
 {
     opts.Password.RequireNonAlphanumeric = false;
@@ -52,17 +43,6 @@ builder.Services.AddIdentity<AuthUser, AuthRole>(opts =>
 })
 .AddEntityFrameworkStores<AuthDbContext>()
 .AddDefaultTokenProviders();
-
-if (builder.Environment.IsProduction())
-{
-    if (string.IsNullOrWhiteSpace(certificatePassword))
-    {
-        throw new InvalidOperationException("Certificates:Password must be configured in Production.");
-    }
-
-    serviceCertificate = LoadOrCreateCertificate(certificatePath, certificatePassword, certificateSubject);
-    dataProtectionBuilder.ProtectKeysWithCertificate(serviceCertificate);
-}
 
 builder.Services.AddOpenIddict()
     .AddCore(opts =>
@@ -73,31 +53,19 @@ builder.Services.AddOpenIddict()
     })
     .AddServer(opts =>
     {
-        // Фиксированный Issuer — не зависит от хоста запроса (важно для работы через Gateway/Docker)
-        var issuer = builder.Configuration["OpenIddict:Issuer"];
-        if (!string.IsNullOrWhiteSpace(issuer))
-            opts.SetIssuer(new Uri(issuer));
-
+        opts.SetIssuer(new Uri(builder.Configuration["OpenIddict:Issuer"] ?? "http://localhost:8086"));
         opts.SetTokenEndpointUris("/connect/token")
             .AllowPasswordFlow()
             .AllowRefreshTokenFlow();
+        opts.SetIntrospectionEndpointUris("/connect/introspect");
 
-        if (builder.Environment.IsProduction())
-        {
-            opts.AddEncryptionCertificate(serviceCertificate!)
-                .AddSigningCertificate(serviceCertificate!);
-        }
-        else
-        {
-            opts.AddDevelopmentEncryptionCertificate()
-                .AddDevelopmentSigningCertificate();
-        }
+        // В Docker/Dev используем встроенные тестовые сертификаты (без файлов/паролей)
+        opts.AddDevelopmentEncryptionCertificate()
+            .AddDevelopmentSigningCertificate();
 
         opts.UseAspNetCore()
             .EnableTokenEndpointPassthrough()
             .DisableTransportSecurityRequirement();
-        
-        opts.SetIntrospectionEndpointUris("/connect/introspect");
     })
     .AddValidation(opts =>
     {
@@ -105,9 +73,7 @@ builder.Services.AddOpenIddict()
         opts.UseAspNetCore();
     });
 
-builder.Services.AddScoped<OpenIddictServerEventHandlers>();
-
-// 🔑 3. JWT Authentication — валидация токенов от /api/Auth/login
+// 🔑 4. JWT Authentication
 var jwtSecret = builder.Configuration["Jwt:Secret"] ?? throw new InvalidOperationException("Jwt:Secret not configured");
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opts =>
@@ -115,100 +81,86 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         opts.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
-            ValidateAudience = false,   // audience разная у user/device токенов
+            ValidateAudience = false,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
             ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "domovoy",
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
         };
     });
+
 builder.Services.AddAuthorization(options =>
 {
-    var defaultPolicyBuilder = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder(
+    var policyBuilder = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder(
         JwtBearerDefaults.AuthenticationScheme,
-        OpenIddict.Validation.AspNetCore.OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
-    defaultPolicyBuilder = defaultPolicyBuilder.RequireAuthenticatedUser();
-    options.DefaultPolicy = defaultPolicyBuilder.Build();
+        OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
+    options.DefaultPolicy = policyBuilder.RequireAuthenticatedUser().Build();
 });
 
-// 🔑 4. MassTransit (RabbitMQ)
+// 🗄 5. Redis
+var redisConn = builder.Configuration.GetConnectionString("Redis") ?? "redis:6379";
+builder.Services.AddSingleton<IConnectionMultiplexer>(
+    _ => ConnectionMultiplexer.Connect(redisConn));
+builder.Services.AddSingleton<IDatabase>(
+    sp => sp.GetRequiredService<IConnectionMultiplexer>().GetDatabase());
+
+// 🐇 6. MassTransit
 builder.Services.AddMassTransit(x =>
 {
-    x.UsingRabbitMq((ctx, cfg) =>
+    x.AddConsumer<TelemetryConsumer>();
+    x.UsingRabbitMq((context, cfg) =>
     {
-        cfg.Host(builder.Configuration["RabbitMQ:Host"] ?? "rabbitmq", h =>
-        {
-            h.Username(builder.Configuration["RabbitMQ:User"] ?? "admin");
-            h.Password(builder.Configuration["RabbitMQ:Pass"] ?? "admin");
-        });
+        var host = builder.Configuration["RabbitMQ:Host"] ?? "rabbitmq";
+        var user = builder.Configuration["RabbitMQ:User"] ?? "admin";
+        var pass = builder.Configuration["RabbitMQ:Pass"] ?? "admin";
+        cfg.Host(host, "/", h => { h.Username(user); h.Password(pass); });
+        cfg.ConfigureEndpoints(context);
         cfg.UseMessageRetry(r => r.Interval(3, TimeSpan.FromSeconds(5)));
-        cfg.ConfigureEndpoints(ctx);
     });
 });
+// AddMassTransitHostedService() удален: в v8+ он регистрируется автоматически
 
-// 🔑 5. Сервисы (только те, что реально существуют)
+// 🛠 6. Регистрация сервисов
 builder.Services.AddScoped<IUserAuthService, UserAuthService>();
 builder.Services.AddScoped<IDeviceAuthService, DeviceAuthService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IValidationService, ValidationService>();
 builder.Services.AddHostedService<ClientRegistrationWorker>();
-// builder.Services.AddHostedService<TokenCleanupWorker>(); // Раскомментируйте, когда создадите класс
 
 builder.Services.AddControllers();
+builder.Services.AddHealthChecks();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new()
-    {
-        Title = "Domovoy Auth Service",
-        Version = "v1",
-        Description = "API аутентификации и авторизации сервиса Domovoy"
-    });
-
-    // Подключаем XML-комментарии
-    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
-    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-    if (File.Exists(xmlPath))
-        c.IncludeXmlComments(xmlPath);
-
+    c.SwaggerDoc("v1", new() { Title = "Domovoy Auth Service", Version = "v1" });
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "Введите JWT токен (без слова Bearer)",
+        Description = "JWT Bearer Token",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT"
+        Scheme = "bearer"
     });
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
-            },
-            Array.Empty<string>()
-        }
+        { new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } }, Array.Empty<string>() }
     });
 });
 
 var app = builder.Build();
 
-// 🔑 Apply pending database migrations on startup
+// 💾 Безопасное применение миграций
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
     try
     {
-        db.Database.Migrate();
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogInformation("✅ Database migrations applied successfully");
+        scope.ServiceProvider.GetRequiredService<AuthDbContext>().Database.Migrate();
+        app.Logger.LogInformation("✅ Migrations applied");
     }
     catch (Exception ex)
     {
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "❌ Error applying database migrations");
+        app.Logger.LogError(ex, "❌ Migration failed");
         throw;
     }
 }
@@ -219,62 +171,22 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-else
-{
-    app.UseHttpsRedirection();
-}
 
 app.UseAuthentication();
 app.UseAuthorization();
-
+app.MapHealthChecks("/health");
 app.MapControllers();
-app.Run();
 
-static X509Certificate2 LoadOrCreateCertificate(string certificatePath, string certificatePassword, string certificateSubject)
+try
 {
-    var certificateDirectory = Path.GetDirectoryName(certificatePath);
-
-    if (!string.IsNullOrWhiteSpace(certificateDirectory))
-    {
-        Directory.CreateDirectory(certificateDirectory);
-    }
-
-    if (File.Exists(certificatePath))
-    {
-        return new X509Certificate2(
-            certificatePath,
-            certificatePassword,
-            X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable);
-    }
-
-    var subjectName = certificateSubject.StartsWith("CN=", StringComparison.OrdinalIgnoreCase)
-        ? certificateSubject
-        : $"CN={certificateSubject}";
-
-    using var rsa = RSA.Create(2048);
-    var request = new CertificateRequest(
-        new X500DistinguishedName(subjectName),
-        rsa,
-        HashAlgorithmName.SHA256,
-        RSASignaturePadding.Pkcs1);
-
-    request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-    request.CertificateExtensions.Add(
-        new X509KeyUsageExtension(
-            X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment,
-            false));
-    request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
-
-    using var certificate = request.CreateSelfSigned(
-        DateTimeOffset.UtcNow.AddDays(-1),
-        DateTimeOffset.UtcNow.AddYears(5));
-
-    var pfxBytes = certificate.Export(X509ContentType.Pfx, certificatePassword);
-    File.WriteAllBytes(certificatePath, pfxBytes);
-
-    return new X509Certificate2(
-        pfxBytes,
-        certificatePassword,
-        X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable);
+    Console.WriteLine("🚀 Starting Domovoy Auth Service...");
+    app.Run();
 }
-
+catch (Exception ex)
+{
+    Console.WriteLine($"💥 FATAL STARTUP CRASH: {ex.GetType().Name}");
+    Console.WriteLine($"📜 Message: {ex.Message}");
+    Console.WriteLine($"🔍 Inner: {ex.InnerException?.Message}");
+    Console.WriteLine($"📑 Stack: {ex.StackTrace}");
+    throw; // Останавливаем контейнер, чтобы увидеть лог
+}
