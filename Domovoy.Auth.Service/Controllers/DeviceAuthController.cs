@@ -5,7 +5,7 @@ using Domovoy.Auth.Service.Services;
 namespace Domovoy.Auth.Service.Controllers;
 
 [ApiController]
-[Route("api/device-auth")] // было [Route("api/[controller]")]
+[Route("api/device-auth")] 
 [Produces("application/json")]
 public class DeviceAuthController : ControllerBase
 {

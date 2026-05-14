@@ -1,4 +1,3 @@
-
 services:
   domovoy-gateway:
     build:
@@ -17,9 +16,12 @@ services:
       - RabbitMQ__User=admin
       - RabbitMQ__Pass=admin
     depends_on:
-      - domovoy-auth
-      - redis
-      - rabbitmq
+      domovoy-auth:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - domovoy_net
@@ -37,19 +39,25 @@ services:
       - Jwt__Issuer=domovoy
       - Jwt__Audience=DomovoyClients
       - Jwt__Secret=CHANGE_THIS_IN_PRODUCTION_32_CHARS_MIN!!!
+      - OpenIddict__Issuer=http://domovoy-auth:8080
       - RabbitMQ__Host=rabbitmq
       - RabbitMQ__User=admin
       - RabbitMQ__Pass=admin
-      - DataProtection__KeysPath=/var/domovoy/dataprotection
-      - Certificates__Path=/var/domovoy/certs/openiddict.pfx
-      - Certificates__Password=CHANGE_THIS_CERT_PASSWORD_IN_PRODUCTION
-      - Certificates__Subject=CN=Domovoy Auth
-    volumes:
-      - domovoy_auth_data:/var/domovoy
+      - ConnectionStrings__Redis=redis:6379
     depends_on:
-      - postgres
-      - rabbitmq
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - domovoy_net
 
@@ -68,9 +76,10 @@ services:
       - domovoy_net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d domovoy_auth"]
-      interval: 10s
-      timeout: 5s
+      interval: 5s
+      timeout: 3s
       retries: 5
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
@@ -84,12 +93,13 @@ services:
       - domovoy_net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
+      interval: 5s
+      timeout: 3s
       retries: 3
+      start_period: 5s
 
   rabbitmq:
-    image: rabbitmq:3-management
+    image: rabbitmq:3.12-management
     container_name: domovoy-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: admin
@@ -101,9 +111,10 @@ services:
       - domovoy_net
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 30s
-      timeout: 10s
+      interval: 10s
+      timeout: 5s
       retries: 3
+      start_period: 15s
 
 volumes:
   pgdata:
