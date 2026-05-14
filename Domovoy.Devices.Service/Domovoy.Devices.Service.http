@@ -1,0 +1,6 @@
+@Domovoy.Devices.Service_HostAddress = http://localhost:5093
+
+GET {{Domovoy.Devices.Service_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

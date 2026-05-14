@@ -34,7 +34,7 @@ namespace Domovoy.Auth.Service.Tests
         public async Task RegisterAsync_ShouldCreateUser_WhenRequestIsValid()
         {
             // Arrange
-            var request = new UserRegisterRequest("testuser", "test@example.com", "Password123!", "First", "Last");
+            var request = new UserRegisterRequest { Username = "testuser", Email = "test@example.com", Password = "Password123!", FirstName = "First", LastName = "Last" };
             _validationServiceMock.Setup(v => v.ValidateUserRegistrationAsync(request))
                 .ReturnsAsync((true, string.Empty));
 
@@ -60,7 +60,7 @@ namespace Domovoy.Auth.Service.Tests
         public async Task RegisterAsync_ShouldThrowException_WhenValidationFails()
         {
             // Arrange
-            var request = new UserRegisterRequest("invalid", "invalid@example.com", "123", "First", "Last");
+            var request = new UserRegisterRequest { Username = "invalid", Email = "invalid@example.com", Password = "123", FirstName = "First", LastName = "Last" };
             _validationServiceMock.Setup(v => v.ValidateUserRegistrationAsync(request))
                 .ReturnsAsync((false, "Invalid password"));
 
@@ -92,7 +92,7 @@ namespace Domovoy.Auth.Service.Tests
             _db.Users.Add(user);
             await _db.SaveChangesAsync();
 
-            var request = new UserLoginRequest(username, password);
+            var request = new UserLoginRequest { Username = username, Password = password };
             _validationServiceMock.Setup(v => v.ValidateUserLogin(request))
                 .Returns((true, string.Empty));
             _tokenServiceMock.Setup(t => t.GenerateUserToken(user)).Returns("access-token");
@@ -119,7 +119,7 @@ namespace Domovoy.Auth.Service.Tests
         public async Task LoginAsync_ShouldThrowUnauthorized_WhenUserNotFound()
         {
             // Arrange
-            var request = new UserLoginRequest("nonexistent", "password");
+            var request = new UserLoginRequest { Username = "nonexistent", Password = "password" };
             _validationServiceMock.Setup(v => v.ValidateUserLogin(request))
                 .Returns((true, string.Empty));
 
@@ -170,6 +170,7 @@ namespace Domovoy.Auth.Service.Tests
             Assert.Equal(newRefreshToken.Token, response.RefreshToken);
             
             var updatedOldToken = await _db.RefreshTokens.FindAsync(oldToken.Id);
+            Assert.NotNull(updatedOldToken);
             Assert.NotNull(updatedOldToken.RevokedAt);
             Assert.Equal(newRefreshToken.Id, updatedOldToken.ReplacedByTokenId);
         }

@@ -32,7 +32,7 @@ namespace Domovoy.Auth.Service.Tests
         public static Mock<UserManager<TUser>> MockUserManager<TUser>() where TUser : class
         {
             var store = new Mock<IUserStore<TUser>>();
-            var mgr = new Mock<UserManager<TUser>>(store.Object, null, null, null, null, null, null, null, null);
+            var mgr = new Mock<UserManager<TUser>>(store.Object, null!, null!, null!, null!, null!, null!, null!, null!);
             mgr.Object.UserValidators.Add(new UserValidator<TUser>());
             mgr.Object.PasswordValidators.Add(new PasswordValidator<TUser>());
             return mgr;
@@ -43,14 +43,14 @@ namespace Domovoy.Auth.Service.Tests
             var store = new Mock<IRoleStore<TRole>>();
             var roles = new List<IRoleValidator<TRole>>();
             roles.Add(new RoleValidator<TRole>());
-            return new Mock<RoleManager<TRole>>(store.Object, roles, null, null, null);
+            return new Mock<RoleManager<TRole>>(store.Object, roles, null!, null!, null!);
         }
 
         [Fact]
         public async Task Register_ShouldReturnCreated_WhenRegistrationSucceeds()
         {
             // Arrange
-            var request = new UserRegisterRequest("test", "test@test.com", "pass", "First", "Last");
+            var request = new UserRegisterRequest { Username = "test", Email = "test@test.com", Password = "pass", FirstName = "First", LastName = "Last" };
             var response = new UserResponse(Guid.NewGuid(), "test", "test@test.com", "First", "Last", true, DateTime.UtcNow);
             
             _userAuthServiceMock.Setup(s => s.RegisterAsync(request, It.IsAny<string>()))
@@ -74,7 +74,7 @@ namespace Domovoy.Auth.Service.Tests
         public async Task Login_ShouldReturnOk_WhenLoginSucceeds()
         {
             // Arrange
-            var request = new UserLoginRequest("test", "pass");
+            var request = new UserLoginRequest { Username = "test", Password = "pass" };
             var response = new TokenResponse("access", "refresh", 3600);
             
             _userAuthServiceMock.Setup(s => s.LoginAsync(request, It.IsAny<string>()))
@@ -98,7 +98,7 @@ namespace Domovoy.Auth.Service.Tests
         public async Task Login_ShouldReturnUnauthorized_WhenServiceThrowsUnauthorized()
         {
             // Arrange
-            var request = new UserLoginRequest("test", "wrong");
+            var request = new UserLoginRequest { Username = "test", Password = "wrong" };
             _userAuthServiceMock.Setup(s => s.LoginAsync(request, It.IsAny<string>()))
                 .ThrowsAsync(new UnauthorizedAccessException("Invalid credentials"));
 

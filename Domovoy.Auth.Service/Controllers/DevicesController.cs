@@ -1,8 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
+using OpenIddict.Validation.AspNetCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using Domovoy.Auth.Service.Contracts;
 using Domovoy.Auth.Service.Services;
+using OpenIddict.Abstractions;
+
 
 namespace Domovoy.Auth.Service.Controllers;
 
@@ -37,7 +41,7 @@ public class DevicesController : ControllerBase
         {
             var userId = GetUserId();
             var result = await _deviceAuthService.RegisterAsync(request, userId, GetClientIp());
-            return CreatedAtAction(nameof(RegisterDevice), new { deviceId = request.NetworkDeviceId }, result);
+            return Created(string.Empty, result);
         }
         catch (InvalidOperationException ex)
         {
@@ -104,10 +108,34 @@ public class DevicesController : ControllerBase
             return StatusCode(500, new { error = "An error occurred during secret rotation" });
         }
     }
+    /// <summary>
+    /// Тестовый эндпоинт для проверки валидации токена устройства
+    /// </summary>
+    [HttpGet("test-token")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public IActionResult TestToken()
+    {
+        // Извлекаем ID устройства из claims токена
+        // OpenIddict кладет subject в claim "sub", но мы также можем добавить кастомный "DeviceId"
+        var deviceId = User.FindFirstValue("DeviceId")
+                      ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
+                      ?? User.FindFirstValue("sub");
+
+        return Ok(new
+        {
+            message = "Device token is valid!",
+            deviceId = deviceId,
+            timestamp = DateTime.UtcNow
+        });
+    }
 
     private Guid GetUserId()
     {
-        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        // OpenIddict использует ClaimTypes.NameIdentifier по умолчанию,
+        // но также может использовать OpenIddictConstants.Claims.Subject
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                       ?? User.FindFirst(OpenIddictConstants.Claims.Subject)?.Value;
+
         if (!Guid.TryParse(userIdClaim, out var userId))
             throw new UnauthorizedAccessException("Invalid user context");
         return userId;

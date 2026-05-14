@@ -1,4 +1,4 @@
-﻿
+
 services:
   domovoy-gateway:
     build:
@@ -9,7 +9,7 @@ services:
       - "8085:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - Jwt__Issuer=DomovoyAuth
+      - Jwt__Issuer=domovoy
       - Jwt__Audience=DomovoyClients
       - Jwt__Secret=CHANGE_THIS_IN_PRODUCTION_32_CHARS_MIN!!!
       - ConnectionStrings__Redis=redis:6379
@@ -34,7 +34,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__Default=Host=postgres;Port=5432;Database=domovoy_auth;Username=postgres;Password=postgres
-      - Jwt__Issuer=DomovoyAuth
+      - Jwt__Issuer=domovoy
       - Jwt__Audience=DomovoyClients
       - Jwt__Secret=CHANGE_THIS_IN_PRODUCTION_32_CHARS_MIN!!!
       - RabbitMQ__Host=rabbitmq
