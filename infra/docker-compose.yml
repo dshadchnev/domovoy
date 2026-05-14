@@ -1,0 +1,115 @@
+﻿
+services:
+  domovoy-gateway:
+    build:
+      context: ..
+      dockerfile: Domovoy.ApiGateway/Dockerfile
+    container_name: domovoy-gateway
+    ports:
+      - "8085:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - Jwt__Issuer=DomovoyAuth
+      - Jwt__Audience=DomovoyClients
+      - Jwt__Secret=CHANGE_THIS_IN_PRODUCTION_32_CHARS_MIN!!!
+      - ConnectionStrings__Redis=redis:6379
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__User=admin
+      - RabbitMQ__Pass=admin
+    depends_on:
+      - domovoy-auth
+      - redis
+      - rabbitmq
+    restart: unless-stopped
+    networks:
+      - domovoy_net
+
+  domovoy-auth:
+    build:
+      context: ..
+      dockerfile: Domovoy.Auth.Service/Dockerfile
+    container_name: domovoy-auth
+    ports:
+      - "8086:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__Default=Host=postgres;Port=5432;Database=domovoy_auth;Username=postgres;Password=postgres
+      - Jwt__Issuer=DomovoyAuth
+      - Jwt__Audience=DomovoyClients
+      - Jwt__Secret=CHANGE_THIS_IN_PRODUCTION_32_CHARS_MIN!!!
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__User=admin
+      - RabbitMQ__Pass=admin
+      - DataProtection__KeysPath=/var/domovoy/dataprotection
+      - Certificates__Path=/var/domovoy/certs/openiddict.pfx
+      - Certificates__Password=CHANGE_THIS_CERT_PASSWORD_IN_PRODUCTION
+      - Certificates__Subject=CN=Domovoy Auth
+    volumes:
+      - domovoy_auth_data:/var/domovoy
+    depends_on:
+      - postgres
+      - rabbitmq
+    restart: unless-stopped
+    networks:
+      - domovoy_net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: domovoy-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: domovoy_auth
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - domovoy_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d domovoy_auth"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: domovoy-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    networks:
+      - domovoy_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: domovoy-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - domovoy_net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  pgdata:
+  redisdata:
+  domovoy_auth_data:
+
+networks:
+  domovoy_net:
+    driver: bridge
