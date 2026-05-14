@@ -1,8 +1,8 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Domovoy.Auth.Service.Data.Migrations
+namespace Domovoy.Auth.Service.Migrations
 {
     /// <inheritdoc />
     public partial class InitialOpenIddict : Migration
