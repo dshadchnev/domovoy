@@ -90,6 +90,34 @@ services:
     restart: unless-stopped
     networks:
       - domovoy_net
+  domovoy-rules-engine:
+    build:
+      context: ..
+      dockerfile: Domovoy.RulesEngine.Service/Dockerfile
+    container_name: domovoy-rules-engine
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__Default=Host=postgres;Port=5432;Database=domovoy_auth;Username=postgres;Password=postgres
+      - Jwt__Secret=your-super-secret-key-min-32-chars-long-for-hs256!!!
+      - Jwt__Issuer=domovoy
+      - Jwt__Audience=domovoy-users
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__User=admin
+      - RabbitMQ__Pass=admin
+    ports:
+      - "8088:8080"
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks:
+      - domovoy-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   postgres:
     image: postgres:16-alpine

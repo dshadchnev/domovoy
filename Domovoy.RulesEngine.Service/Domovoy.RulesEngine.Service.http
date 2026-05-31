@@ -1,0 +1,6 @@
+@Domovoy.RulesEngine.Service_HostAddress = http://localhost:5152
+
+GET {{Domovoy.RulesEngine.Service_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
