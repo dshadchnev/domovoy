@@ -1,15 +1,14 @@
+// Domovoy.Auth.Service/Controllers/DevicesController.cs
 using Microsoft.AspNetCore.Authorization;
 using OpenIddict.Validation.AspNetCore;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+using OpenIddict.Abstractions;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using Domovoy.Auth.Service.Contracts;
 using Domovoy.Auth.Service.Services;
-using OpenIddict.Abstractions;
 using System.Text.Json;
 using MassTransit;
 using Domovoy.Shared.Events;
-
 
 namespace Domovoy.Auth.Service.Controllers;
 
@@ -31,16 +30,14 @@ public class DevicesController : ControllerBase
     }
 
     /// <summary>
-    /// Регистрация нового устройства для текущего пользователя
+    /// Регистрация нового устройства (ГЕНЕРАЦИЯ СЕКРЕТА) — только здесь!
     /// </summary>
     [HttpPost("register")]
     [ProducesResponseType(typeof(DeviceCredentialResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> RegisterDevice([FromBody] DeviceRegisterRequest request)
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
+        if (!ModelState.IsValid) return BadRequest(ModelState);
 
         try
         {
@@ -50,23 +47,17 @@ public class DevicesController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning("Ошибка регистрации устройства: {Message}", ex.Message);
+            _logger.LogWarning("Ошибка регистрации: {Message}", ex.Message);
             return BadRequest(new { error = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Неожиданная ошибка при регистрации устройства");
-            return StatusCode(500, new { error = "An error occurred during device registration" });
         }
     }
 
     /// <summary>
-    /// Отзыв устройства (блокировка доступа)
+    /// Отзыв устройства — блокирует аутентификацию
     /// </summary>
     [HttpPost("{deviceId}/revoke")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> RevokeDevice(string deviceId)
     {
         try
@@ -77,23 +68,16 @@ public class DevicesController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning("Устройство не найдено: {DeviceId}", deviceId);
             return NotFound(new { error = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Ошибка при отзыве устройства");
-            return StatusCode(500, new { error = "An error occurred during device revocation" });
         }
     }
 
     /// <summary>
-    /// Ротация секрета устройства (обновить пароль)
+    /// Ротация секрета — критичная операция безопасности
     /// </summary>
     [HttpPost("{deviceId}/rotate-secret")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> RotateSecret(string deviceId)
     {
         try
@@ -104,41 +88,19 @@ public class DevicesController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning("Устройство не найдено: {DeviceId}", deviceId);
             return NotFound(new { error = ex.Message });
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Ошибка при ротации секрета");
-            return StatusCode(500, new { error = "An error occurred during secret rotation" });
-        }
     }
+
     /// <summary>
-    /// Тестовый эндпоинт для проверки валидации токена устройства
+    /// ПРИЁМ ТЕЛЕМЕТРИИ — критичная проверка безопасности
     /// </summary>
-    [HttpGet("test-token")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public IActionResult TestToken()
-    {
-        // Извлекаем ID устройства из claims токена
-        // OpenIddict кладет subject в claim "sub", но мы также можем добавить кастомный "DeviceId"
-        var deviceId = User.FindFirstValue("DeviceId")
-                      ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
-                      ?? User.FindFirstValue("sub");
-
-        return Ok(new
-        {
-            message = "Device token is valid!",
-            deviceId = deviceId,
-            timestamp = DateTime.UtcNow
-        });
-    }
-
     [HttpPost("{id}/telemetry")]
     [Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> ReceiveTelemetry(string id, [FromBody] JsonElement telemetry)
     {
+        // 🔐 КЛЮЧЕВАЯ ПРОВЕРКА: DeviceId claim == URL ID
         var tokenDeviceId = User.FindFirstValue("DeviceId")
                           ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -150,6 +112,7 @@ public class DevicesController : ControllerBase
 
         _logger.LogInformation("📡 Telemetry received from {DeviceId}", id);
 
+        // Публикация в шину (тот же контракт для всех устройств)
         await _bus.Publish(new TelemetryReceivedEvent(id, telemetry.GetRawText(), DateTime.UtcNow));
 
         return Ok(new { status = "accepted", timestamp = DateTime.UtcNow });
@@ -157,8 +120,6 @@ public class DevicesController : ControllerBase
 
     private Guid GetUserId()
     {
-        // OpenIddict использует ClaimTypes.NameIdentifier по умолчанию,
-        // но также может использовать OpenIddictConstants.Claims.Subject
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
                        ?? User.FindFirst(OpenIddictConstants.Claims.Subject)?.Value;
 
@@ -167,8 +128,5 @@ public class DevicesController : ControllerBase
         return userId;
     }
 
-    private string? GetClientIp()
-    {
-        return HttpContext.Connection.RemoteIpAddress?.ToString();
-    }
+    private string? GetClientIp() => HttpContext.Connection.RemoteIpAddress?.ToString();
 }
