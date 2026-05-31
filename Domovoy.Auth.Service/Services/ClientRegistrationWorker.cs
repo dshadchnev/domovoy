@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -39,6 +39,23 @@ public class ClientRegistrationWorker(IServiceProvider sp, ILogger<ClientRegistr
                 };
                 await manager.CreateAsync(descriptor, cancellationToken);
                 _logger.LogInformation("✅ Client 'domovoy-client' registered");
+            }
+
+            // Регистрация Device Manager как клиента introspection
+            if (await manager.FindByClientIdAsync("domovoy-device-manager", cancellationToken) == null)
+            {
+                var introspectionClient = new OpenIddictApplicationDescriptor
+                {
+                    ClientId = "domovoy-device-manager",
+                    ClientSecret = "device-manager-secret",
+                    DisplayName = "Domovoy Device Manager Service",
+                    Permissions =
+                    {
+                        OpenIddictConstants.Permissions.Endpoints.Introspection
+                    }
+                };
+                await manager.CreateAsync(introspectionClient, cancellationToken);
+                _logger.LogInformation("✅ Client 'domovoy-device-manager' registered for introspection");
             }
         }
         catch (Exception ex)

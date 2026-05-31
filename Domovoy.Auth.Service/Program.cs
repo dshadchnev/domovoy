@@ -170,6 +170,8 @@ if (app.Environment.IsDevelopment())
     app.UseDeveloperExceptionPage();
     app.UseSwagger();
     app.UseSwaggerUI();
+    // Перенаправление с корня на Swagger
+    app.MapGet("/", () => Results.Redirect("/swagger"));
 }
 
 app.UseAuthentication();

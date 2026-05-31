@@ -31,7 +31,9 @@ public class DeviceCredential
     public string NetworkDeviceId { get; set; } = default!;
     public string SecretHash { get; set; } = default!;
     public Guid OwnerUserId { get; set; }
+    public string? Name { get; set; }
     public Guid? RoomId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public bool IsRevoked { get; set; }
+    public DateTime? UpdatedAt { get; set; }
 }
