@@ -9,8 +9,8 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - Jwt__Issuer=domovoy
-      - Jwt__Audience=DomovoyClients
-      - Jwt__Secret=CHANGE_THIS_IN_PRODUCTION_32_CHARS_MIN!!!
+      - Jwt__Audience=domovoy-users
+      - Jwt__Secret=your-super-secret-key-min-32-chars-long-for-hs256!!!
       - ConnectionStrings__Redis=redis:6379
       - RabbitMQ__Host=rabbitmq
       - RabbitMQ__User=admin
@@ -39,8 +39,8 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__Default=Host=postgres;Port=5432;Database=domovoy_auth;Username=postgres;Password=postgres
       - Jwt__Issuer=domovoy
-      - Jwt__Audience=DomovoyClients
-      - Jwt__Secret=CHANGE_THIS_IN_PRODUCTION_32_CHARS_MIN!!!
+      - Jwt__Audience=domovoy-users
+      - Jwt__Secret=your-super-secret-key-min-32-chars-long-for-hs256!!!
       - OpenIddict__Issuer=http://domovoy-auth:8080
       - RabbitMQ__Host=rabbitmq
       - RabbitMQ__User=admin
@@ -78,6 +78,9 @@ services:
       - OpenIddict__Issuer=http://domovoy-auth:8080/
       - OpenIddict__ClientId=domovoy-device-manager
       - OpenIddict__ClientSecret=device-manager-secret
+      - Jwt__Secret=your-super-secret-key-min-32-chars-long-for-hs256!!!
+      - Jwt__Issuer=domovoy
+      - Jwt__Audience=domovoy-users
     ports:
       - "8087:8080"
     depends_on:
@@ -111,7 +114,7 @@ services:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
     networks:
-      - domovoy-network
+      - domovoy_net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
