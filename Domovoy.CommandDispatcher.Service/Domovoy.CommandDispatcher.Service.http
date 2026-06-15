@@ -1,0 +1,6 @@
+@Domovoy.CommandDispatcher.Service_HostAddress = http://localhost:5273
+
+GET {{Domovoy.CommandDispatcher.Service_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

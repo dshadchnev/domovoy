@@ -59,6 +59,9 @@ builder.Services.AddOpenIddict()
             .AllowRefreshTokenFlow();
         opts.SetIntrospectionEndpointUris("/connect/introspect");
 
+        // Register supported scopes
+        opts.RegisterScopes(OpenIddictConstants.Scopes.OpenId, OpenIddictConstants.Scopes.Profile);
+
         // В Docker/Dev используем встроенные тестовые сертификаты (без файлов/паролей)
         opts.AddDevelopmentEncryptionCertificate()
             .AddDevelopmentSigningCertificate();
