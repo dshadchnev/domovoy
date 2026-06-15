@@ -55,7 +55,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      test: ["CMD", "/bin/bash", "-c", "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'HTTP/1.1 200 OK'"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -116,7 +116,35 @@ services:
     networks:
       - domovoy_net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "/bin/bash", "-c", "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'HTTP/1.1 200 OK'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+  domovoy-command-dispatcher:
+    build:
+      context: ..
+      dockerfile: Domovoy.CommandDispatcher.Service/Dockerfile
+    container_name: domovoy-command-dispatcher
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__Default=Host=postgres;Port=5432;Database=domovoy_auth;Username=postgres;Password=postgres
+      - Jwt__Secret=your-super-secret-key-min-32-chars-long-for-hs256!!!
+      - Jwt__Issuer=domovoy
+      - Jwt__Audience=domovoy-users
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__User=admin
+      - RabbitMQ__Pass=admin
+    ports:
+      - "8089:8080"
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks:
+      - domovoy_net
+    healthcheck:
+      test: ["CMD", "/bin/bash", "-c", "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'HTTP/1.1 200 OK'"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -186,3 +214,4 @@ volumes:
 networks:
   domovoy_net:
     driver: bridge
+

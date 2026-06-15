@@ -67,7 +67,9 @@ public class UserAuthService : IUserAuthService
         {
             Id = Guid.NewGuid(),
             UserName = req.Username,
+            NormalizedUserName = req.Username.ToUpperInvariant(),
             Email = req.Email,
+            NormalizedEmail = req.Email?.ToUpperInvariant(),
             FirstName = req.FirstName,
             LastName = req.LastName,
             IsActive = true,

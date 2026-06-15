@@ -22,40 +22,56 @@ public class ClientRegistrationWorker(IServiceProvider sp, ILogger<ClientRegistr
             using var scope = _sp.CreateScope();
             var manager = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
 
-            if (await manager.FindByClientIdAsync("domovoy-client", cancellationToken) == null)
+            var clientDescriptor = new OpenIddictApplicationDescriptor
             {
-                var descriptor = new OpenIddictApplicationDescriptor
+                ClientId = "domovoy-client",
+                DisplayName = "Domovoy Smart Home Client",
+                ClientType = OpenIddictConstants.ClientTypes.Public,
+                Permissions =
                 {
-                    ClientId = "domovoy-client",
-                    DisplayName = "Domovoy Smart Home Client",
-                    Permissions =
-                    {
-                        OpenIddictConstants.Permissions.Endpoints.Token,
-                        OpenIddictConstants.Permissions.GrantTypes.Password,
-                        OpenIddictConstants.Permissions.GrantTypes.RefreshToken,
-                        OpenIddictConstants.Scopes.OpenId,
-                        OpenIddictConstants.Scopes.Profile
-                    }
-                };
-                await manager.CreateAsync(descriptor, cancellationToken);
+                    OpenIddictConstants.Permissions.Endpoints.Token,
+                    OpenIddictConstants.Permissions.GrantTypes.Password,
+                    OpenIddictConstants.Permissions.GrantTypes.RefreshToken,
+                    OpenIddictConstants.Permissions.Prefixes.Scope + OpenIddictConstants.Scopes.OpenId,
+                    OpenIddictConstants.Permissions.Prefixes.Scope + OpenIddictConstants.Scopes.Profile
+                }
+            };
+
+            var client = await manager.FindByClientIdAsync("domovoy-client", cancellationToken);
+            if (client == null)
+            {
+                await manager.CreateAsync(clientDescriptor, cancellationToken);
                 _logger.LogInformation("✅ Client 'domovoy-client' registered");
+            }
+            else
+            {
+                await manager.UpdateAsync(client, clientDescriptor, cancellationToken);
+                _logger.LogInformation("✅ Client 'domovoy-client' updated");
             }
 
             // Регистрация Device Manager как клиента introspection
-            if (await manager.FindByClientIdAsync("domovoy-device-manager", cancellationToken) == null)
+            var introspectionDescriptor = new OpenIddictApplicationDescriptor
             {
-                var introspectionClient = new OpenIddictApplicationDescriptor
+                ClientId = "domovoy-device-manager",
+                ClientSecret = "device-manager-secret",
+                DisplayName = "Domovoy Device Manager Service",
+                ClientType = OpenIddictConstants.ClientTypes.Confidential,
+                Permissions =
                 {
-                    ClientId = "domovoy-device-manager",
-                    ClientSecret = "device-manager-secret",
-                    DisplayName = "Domovoy Device Manager Service",
-                    Permissions =
-                    {
-                        OpenIddictConstants.Permissions.Endpoints.Introspection
-                    }
-                };
-                await manager.CreateAsync(introspectionClient, cancellationToken);
+                    OpenIddictConstants.Permissions.Endpoints.Introspection
+                }
+            };
+
+            var introspectionClient = await manager.FindByClientIdAsync("domovoy-device-manager", cancellationToken);
+            if (introspectionClient == null)
+            {
+                await manager.CreateAsync(introspectionDescriptor, cancellationToken);
                 _logger.LogInformation("✅ Client 'domovoy-device-manager' registered for introspection");
+            }
+            else
+            {
+                await manager.UpdateAsync(introspectionClient, introspectionDescriptor, cancellationToken);
+                _logger.LogInformation("✅ Client 'domovoy-device-manager' updated for introspection");
             }
         }
         catch (Exception ex)
