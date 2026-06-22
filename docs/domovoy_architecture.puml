@@ -1,0 +1,146 @@
+@startuml Domovoy_Architecture
+!theme C4_Theme from https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/themes/puml-theme-C4_Theme.puml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+title System Context & Container Diagram for Domovoy (Smart Home System)
+
+Person(user, "User / Client", "Manages devices, rules, and commands via Web/Mobile interface")
+System_Ext(iot_device, "IoT Device / Simulator", "Sends telemetry and receives commands (HTTP, MQTT, Zigbee)")
+
+System_Boundary(domovoy_system, "Domovoy System") {
+    Container(gateway, "API Gateway (domovoy-gateway)", "ASP.NET Core, YARP", "Routes HTTP requests, enriches headers with claims cached in Redis, logs security events")
+    Container(auth_service, "Auth Service (domovoy-auth)", "ASP.NET Core, OpenIddict", "Handles registration, login, refresh token, device credentials, and telemetry ingress validation")
+    Container(device_manager, "Device Manager (domovoy-device-manager)", "ASP.NET Core", "Manages device metadata (names, rooms) linked to owners")
+    Container(rules_engine, "Rules Engine (domovoy-rules-engine)", "ASP.NET Core, NCalc", "Stores automation rules, evaluates telemetry data, triggers command events")
+    Container(command_dispatcher, "Command Dispatcher (domovoy-command-dispatcher)", "ASP.NET Core", "Receives command execution events, logs commands, and dispatches them via HTTP/MQTT/Zigbee")
+
+    ContainerDb(postgres, "Database (PostgreSQL)", "PostgreSQL 16", "Stores persistent data: user accounts, device credentials, rules, command logs")
+    ContainerDb(redis, "Distributed Cache (Redis)", "Redis 7", "Caches user claims (devices/rooms access) and audit logs (90 days)")
+    ContainerQueue(rabbitmq, "Message Broker (RabbitMQ)", "RabbitMQ 3.12 (MassTransit)", "Asynchronous event-driven communication between microservices")
+}
+
+' Relations
+Rel(user, gateway, "HTTPS Requests (Port 8085)", "JSON")
+Rel(iot_device, gateway, "1. Authenticates & 2. Sends Telemetry", "HTTPS/JSON")
+
+Rel(gateway, auth_service, "Proxies: Auth, Device Reg, Telemetry Ingress", "HTTP/JSON")
+Rel(gateway, device_manager, "Proxies: Device Metadata CRUD", "HTTP/JSON")
+Rel(gateway, rules_engine, "Proxies: Rule Management", "HTTP/JSON")
+Rel(gateway, command_dispatcher, "Proxies: Command logs & retry", "HTTP/JSON")
+
+Rel_R(gateway, redis, "Enriches headers via claims cache & logs audits", "Redis Protocol")
+
+Rel(auth_service, postgres, "Reads/Writes user accounts, device tokens", "EF Core")
+Rel(auth_service, rabbitmq, "Publishes events (UserLoggedIn, TelemetryReceived, etc.)", "MassTransit")
+
+Rel(device_manager, postgres, "Reads/Writes device metadata", "EF Core")
+Rel(device_manager, rabbitmq, "Publishes DeviceUpdatedEvent", "MassTransit")
+
+Rel(rules_engine, postgres, "Reads/Writes automation rules", "EF Core")
+Rel(rules_engine, rabbitmq, "Subscribes to TelemetryReceivedEvent, Publishes ExecuteCommandEvent", "MassTransit")
+
+Rel(command_dispatcher, postgres, "Reads device credentials, writes command logs", "EF Core")
+Rel(command_dispatcher, rabbitmq, "Subscribes to ExecuteCommandEvent", "MassTransit")
+
+Rel(command_dispatcher, iot_device, "Dispatches commands", "HTTP POST / MQTT Publish / Zigbee")
+
+Rel(gateway, rabbitmq, "Subscribes to DeviceLinkedEvent (updates claims cache) & Audit events (writes to Redis)", "MassTransit")
+
+@enduml
+
+@startuml Domovoy_Telemetry_Flow
+autonumber
+skinparam BoxPadding 10
+skinparam ParticipantPadding 10
+
+actor "IoT Device" as iot
+box "Domovoy System" #LightBlue
+    participant "API Gateway" as gateway
+    participant "Redis" as redis
+    participant "Auth Service" as auth
+    participant "RabbitMQ" as rabbitmq
+    participant "Rules Engine" as rules
+    participant "PostgreSQL" as db
+    participant "Command Dispatcher" as dispatcher
+end box
+
+== Authentication (Periodic) ==
+iot -> gateway: POST /api/device-auth/authenticate\n{networkDeviceId, secret}
+gateway -> auth: Proxy request
+auth -> auth: Validate secret in DB
+auth --> gateway: JWT Token
+gateway --> iot: JWT Token
+
+== Telemetry Sending & Ingress ==
+iot -> gateway: POST /api/devices/{id}/telemetry\nHeader: Bearer JWT\nBody: {temperature: 26, status: "ON"}
+gateway -> gateway: Enrich request with headers\n(X-Domovoy-UserId, etc.)
+gateway -> auth: Proxy telemetry request
+auth -> auth: Verify URL DeviceId == Token DeviceId
+auth -> rabbitmq: Publish TelemetryReceivedEvent\n{DeviceId, Data: "...", Timestamp}
+auth --> gateway: 200 OK (accepted)
+gateway --> iot: 200 OK (accepted)
+
+== Rule Evaluation ==
+rabbitmq -> rules: Deliver TelemetryReceivedEvent
+rules -> rules: Parse telemetry JSON
+rules -> db: Load active rules for DeviceId
+db --> rules: Active rules (e.g. "temperature > 25" -> "turn_off")
+rules -> rules: Evaluate conditions (using NCalc)
+alt Condition met ("temperature > 25" is true)
+    rules -> rabbitmq: Publish ExecuteCommandEvent\n{DeviceId, Command: "turn_off", Params: null, SourceRuleId}
+end
+
+== Command Dispatch ==
+rabbitmq -> dispatcher: Deliver ExecuteCommandEvent
+dispatcher -> db: Write CommandLog (status: pending)
+dispatcher -> db: Query DeviceCredentials (get protocol & endpoint)
+db --> dispatcher: Protocol: HTTP, Endpoint: http://device-ip/command
+dispatcher -> iot: POST http://device-ip/command\n{command: "turn_off"}
+iot --> dispatcher: 200 OK
+dispatcher -> db: Update CommandLog (status: success)
+@enduml
+
+@startuml Domovoy_User_Device_Registration_Flow
+autonumber
+actor "User Client" as client
+box "Domovoy System" #LightBlue
+    participant "API Gateway" as gateway
+    participant "Redis" as redis
+    participant "Auth Service" as auth
+    participant "PostgreSQL" as db
+    participant "RabbitMQ" as rabbitmq
+end box
+
+== User Registration & Login ==
+client -> gateway: POST /api/auth/register\n{username, email, password}
+gateway -> auth: Proxy registration
+auth -> auth: Hash password (BCrypt)
+auth -> db: Create User record
+auth --> gateway: 201 Created
+gateway --> client: 201 Created
+
+client -> gateway: POST /api/auth/login\n{username, password}
+gateway -> auth: Proxy login
+auth -> db: Fetch user & verify password
+auth -> auth: Generate Access (JWT) & Refresh token
+auth -> rabbitmq: Publish UserLoggedInEvent
+auth --> gateway: 200 OK (tokens)
+gateway --> client: 200 OK (tokens)
+
+rabbitmq -> gateway: (ClaimsCacheConsumer) Clear/update cache
+rabbitmq -> gateway: (AuthAuditConsumer) Push LOGIN event to Redis list
+
+== Device Registration (Linking) ==
+client -> gateway: POST /api/devices/register\nHeader: Bearer User-JWT\nBody: {networkDeviceId, roomId}
+gateway -> gateway: Extract user claims
+gateway -> auth: Proxy registration
+auth -> auth: Generate cryptographically strong secret
+auth -> db: Save DeviceCredentials (owner = User, hashed secret)
+auth -> rabbitmq: Publish DeviceLinkedEvent\n{NetworkDeviceId, OwnerId, RoomId}
+auth --> gateway: 201 Created\n{networkDeviceId, secret}
+gateway --> client: 201 Created\n{networkDeviceId, secret} (Shown once!)
+
+rabbitmq -> gateway: (ClaimsCacheConsumer) updates Redis claims cache\n`domovoy:claims:{userId}` with new DeviceAccess
+@enduml
