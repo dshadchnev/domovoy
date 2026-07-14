@@ -210,6 +210,9 @@ namespace Domovoy.Auth.Service.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Endpoint")
+                        .HasColumnType("text");
+
                     b.Property<bool>("IsRevoked")
                         .HasColumnType("boolean");
 
@@ -222,6 +225,9 @@ namespace Domovoy.Auth.Service.Migrations
 
                     b.Property<Guid>("OwnerUserId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Protocol")
+                        .HasColumnType("text");
 
                     b.Property<Guid?>("RoomId")
                         .HasColumnType("uuid");

@@ -42,7 +42,6 @@ public class AuditService : IAuditService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error logging audit event");
-            // Don't throw - audit logging failures shouldn't break the application
         }
     }
 

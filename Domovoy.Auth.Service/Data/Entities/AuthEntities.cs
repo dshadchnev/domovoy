@@ -1,9 +1,9 @@
-﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Domovoy.Auth.Service.Data.Entities;
 
-// 🔑 КРИТИЧНО: Наследуем от IdentityUser<Guid>
+// Наследуем от IdentityUser<Guid>
 [Table("Users")]
 public class AuthUser : IdentityUser<Guid>
 {
@@ -36,4 +36,6 @@ public class DeviceCredential
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public bool IsRevoked { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    public string? Protocol { get; set; }
+    public string? Endpoint { get; set; }
 }

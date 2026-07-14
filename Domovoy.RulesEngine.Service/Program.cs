@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using OpenIddict.Validation.AspNetCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -19,30 +20,68 @@ builder.Services.AddDbContextFactory<RulesEngineDbContext>(
 builder.Services.AddDbContext<RulesEngineDbContext>(
     opts => opts.UseNpgsql(connStr));
 
-// 2. JWT Validation (�� �� ������������, ��� � ������ ��������)
-var jwtSecret = builder.Configuration["Jwt:Secret"]
-    ?? throw new InvalidOperationException("Jwt:Secret not configured");
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(opts =>
+// 2. OpenIddict Validation — introspection через Auth Service (для JWE/OpenIddict токенов)
+builder.Services.AddOpenIddict()
+    .AddValidation(options =>
     {
-        opts.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
-        };
+        options.SetIssuer(builder.Configuration["OpenIddict:Issuer"]);
+        options.UseIntrospection()
+               .SetClientId(builder.Configuration["OpenIddict:ClientId"])
+               .SetClientSecret(builder.Configuration["OpenIddict:ClientSecret"]);
+        options.UseSystemNetHttp();
+        options.UseAspNetCore();
     });
+
+// 3. Authentication: Policy Scheme — принимает и OpenIddict JWE, и plain HS256 JWT
+var jwtSecret = builder.Configuration["Jwt:Secret"];
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultScheme = "SmartBearer";
+    options.DefaultChallengeScheme = "SmartBearer";
+})
+.AddPolicyScheme("SmartBearer", "JWT or OpenIddict", options =>
+{
+    options.ForwardDefaultSelector = ctx =>
+    {
+        var auth = ctx.Request.Headers["Authorization"].FirstOrDefault() ?? "";
+        // Plain JWT = 3 части (header.payload.sig)
+        if (auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            var token = auth["Bearer ".Length..].Trim();
+            if (token.Split('.').Length == 3)
+                return JwtBearerDefaults.AuthenticationScheme;
+        }
+        return OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
+    };
+})
+.AddJwtBearer(opts =>
+{
+    opts.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "domovoy",
+        ValidAudiences = new[]
+        {
+            builder.Configuration["Jwt:Audience"] ?? "domovoy-users",
+            "DomovoyClients"
+        },
+        IssuerSigningKey = jwtSecret != null
+            ? new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
+            : null
+    };
+});
 
 builder.Services.AddAuthorization();
 
-// 3. MassTransit v8+ (�������� ����� �����������)
+// 3. MassTransit v8+ 
 builder.Services.AddMassTransit(x =>
 {
-    // ������������ ���������� ��� ����������
+
     x.AddConsumer<TelemetryRuleEvaluator>();
 
     x.UsingRabbitMq((context, cfg) =>
@@ -53,10 +92,8 @@ builder.Services.AddMassTransit(x =>
             h.Password(builder.Configuration["RabbitMQ:Pass"]);
         });
 
-        // ����������� �������� ����� ��� �����������
         cfg.ConfigureEndpoints(context);
 
-        // Retry-�������� (�������� ����� �����)
         cfg.UseMessageRetry(r => r.Interval(3, TimeSpan.FromSeconds(5)));
     });
 });
@@ -94,7 +131,6 @@ builder.Services.AddSwaggerGen(opts =>
 
 var app = builder.Build();
 
-// �������� ��� ������ (��� Dev)
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<RulesEngineDbContext>();
@@ -110,11 +146,11 @@ if (app.Environment.IsDevelopment())
 app.UseAuthentication();
 app.UseAuthorization();
 
-// HealthChecks ���������
+// HealthChecks 
 app.MapHealthChecks("/health");
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = _ => false });
 
-// API ���������
+// API 
 app.MapControllers();
 
 app.Run();

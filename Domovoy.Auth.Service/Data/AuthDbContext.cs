@@ -35,7 +35,7 @@ public class AuthDbContext(DbContextOptions<AuthDbContext> opts) : IdentityDbCon
         builder.Entity<AuditLog>().HasIndex(a => a.UserId);
         builder.Entity<AuditLog>().HasIndex(a => a.CreatedAt).IsDescending();
 
-        // 🔑 OpenIddict с Guid-ключами
+        // OpenIddict с Guid-ключами
         builder.UseOpenIddict<Guid>();
     }
 }

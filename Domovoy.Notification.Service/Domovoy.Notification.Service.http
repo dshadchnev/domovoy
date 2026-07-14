@@ -1,0 +1,6 @@
+@Domovoy.Notification.Service_HostAddress = http://localhost:5237
+
+GET {{Domovoy.Notification.Service_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

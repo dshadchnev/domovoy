@@ -73,6 +73,31 @@ public class ClientRegistrationWorker(IServiceProvider sp, ILogger<ClientRegistr
                 await manager.UpdateAsync(introspectionClient, introspectionDescriptor, cancellationToken);
                 _logger.LogInformation("✅ Client 'domovoy-device-manager' updated for introspection");
             }
+
+            // Регистрация Rules Engine как клиента introspection
+            var rulesEngineDescriptor = new OpenIddictApplicationDescriptor
+            {
+                ClientId = "domovoy-rules-engine",
+                ClientSecret = "rules-engine-secret",
+                DisplayName = "Domovoy Rules Engine Service",
+                ClientType = OpenIddictConstants.ClientTypes.Confidential,
+                Permissions =
+                {
+                    OpenIddictConstants.Permissions.Endpoints.Introspection
+                }
+            };
+
+            var rulesEngineClient = await manager.FindByClientIdAsync("domovoy-rules-engine", cancellationToken);
+            if (rulesEngineClient == null)
+            {
+                await manager.CreateAsync(rulesEngineDescriptor, cancellationToken);
+                _logger.LogInformation("✅ Client 'domovoy-rules-engine' registered for introspection");
+            }
+            else
+            {
+                await manager.UpdateAsync(rulesEngineClient, rulesEngineDescriptor, cancellationToken);
+                _logger.LogInformation("✅ Client 'domovoy-rules-engine' updated for introspection");
+            }
         }
         catch (Exception ex)
         {

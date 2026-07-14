@@ -11,19 +11,22 @@ public class CommandLog
 	public string DeviceId { get; set; } = string.Empty;
 
 	[Required]
-	public string Command { get; set; } = string.Empty;  // "turn_on", "set_brightness"
-
-	public string? Params { get; set; }  // JSON: {"brightness": 80}
-
-	public string? SourceRuleId { get; set; }  // Какое правило сработало (для аудита)
+	// "turn_on", "set_brightness"
+	public string Command { get; set; } = string.Empty;  
+	// JSON: {"brightness": 80}
+	public string? Params { get; set; }  
+	// Какое правило сработало (для аудита)
+	public string? SourceRuleId { get; set; }  
 
 	[Required]
-	public string Status { get; set; } = "pending";  // pending, sent, success, failed
-
-	public string? ErrorMessage { get; set; }  // Если статус = failed
-	public string? Protocol { get; set; }  // HTTP, MQTT, Zigbee
-
-	public string? Endpoint { get; set; }  // URL или топик для отправки
+	// pending, sent, success, failed
+	public string Status { get; set; } = "pending";  
+	// Если статус = failed
+	public string? ErrorMessage { get; set; }
+    // HTTP, MQTT, Zigbee
+    public string? Protocol { get; set; }
+    // URL или топик для отправки
+    public string? Endpoint { get; set; }  
 
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 	public DateTime? SentAt { get; set; }

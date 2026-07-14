@@ -58,7 +58,7 @@ public class CommandExecutor : IConsumer<ExecuteCommandEvent>
         }
 
         var protocol = device.Protocol?.ToUpperInvariant() ?? "HTTP";
-        var endpoint = device.Endpoint;  // URL для HTTP или топик для MQTT
+        var endpoint = device.Endpoint; 
 
         log.Protocol = protocol;
         log.Endpoint = endpoint;
@@ -97,7 +97,7 @@ public class CommandExecutor : IConsumer<ExecuteCommandEvent>
             _logger.LogError(ex, "❌ Failed to send command {Command} to {DeviceId}",
                 command.Command, command.DeviceId);
 
-            throw; // Перебрасываем для механизма retry MassTransit
+            throw;
         }
     }
 

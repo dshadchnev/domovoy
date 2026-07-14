@@ -22,20 +22,20 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Note: не переключаем среду принудительно — используем реальный ASPNETCORE_ENVIRONMENT
 
-// 🔑 1. DataProtection (кроссплатформенный путь: работает и в Windows, и в Linux/Docker)
+// DataProtection (кроссплатформенный путь: работает и в Windows, и в Linux/Docker)
 var dpKeysPath = Path.Combine(Path.GetTempPath(), "domovoy-dataprotection");
 builder.Services.AddDataProtection()
     .SetApplicationName("Domovoy.Auth.Service")
     .PersistKeysToFileSystem(new DirectoryInfo(dpKeysPath));
 
-// 🔑 2. EF Core + PostgreSQL
+// EF Core + PostgreSQL
 builder.Services.AddDbContext<AuthDbContext>(opts =>
 {
     opts.UseNpgsql(builder.Configuration.GetConnectionString("Default"));
     opts.UseOpenIddict<Guid>();
 });
 
-// 🔑 3. Identity + OpenIddict
+// Identity + OpenIddict
 builder.Services.AddIdentity<AuthUser, AuthRole>(opts =>
 {
     opts.Password.RequireNonAlphanumeric = false;
@@ -76,7 +76,7 @@ builder.Services.AddOpenIddict()
         opts.UseAspNetCore();
     });
 
-// 🔑 4. JWT Authentication
+// JWT Authentication
 var jwtSecret = builder.Configuration["Jwt:Secret"] ?? throw new InvalidOperationException("Jwt:Secret not configured");
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opts =>
@@ -100,14 +100,14 @@ builder.Services.AddAuthorization(options =>
     options.DefaultPolicy = policyBuilder.RequireAuthenticatedUser().Build();
 });
 
-// 🗄 5. Redis
+// Redis
 var redisConn = builder.Configuration.GetConnectionString("Redis") ?? "redis:6379";
 builder.Services.AddSingleton<IConnectionMultiplexer>(
     _ => ConnectionMultiplexer.Connect(redisConn));
 builder.Services.AddSingleton<IDatabase>(
     sp => sp.GetRequiredService<IConnectionMultiplexer>().GetDatabase());
 
-// 🐇 6. MassTransit
+// MassTransit
 builder.Services.AddMassTransit(x =>
 {
     x.AddConsumer<TelemetryConsumer>();
@@ -123,7 +123,7 @@ builder.Services.AddMassTransit(x =>
 });
 // AddMassTransitHostedService() удален: в v8+ он регистрируется автоматически
 
-// 🛠 6. Регистрация сервисов
+// Регистрация сервисов
 builder.Services.AddScoped<IUserAuthService, UserAuthService>();
 builder.Services.AddScoped<IDeviceAuthService, DeviceAuthService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
@@ -153,7 +153,7 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-// 💾 Безопасное применение миграций
+// Безопасное применение миграций
 using (var scope = app.Services.CreateScope())
 {
     try
@@ -193,5 +193,5 @@ catch (Exception ex)
     Console.WriteLine($"📜 Message: {ex.Message}");
     Console.WriteLine($"🔍 Inner: {ex.InnerException?.Message}");
     Console.WriteLine($"📑 Stack: {ex.StackTrace}");
-    throw; // Останавливаем контейнер, чтобы увидеть лог
+    throw; 
 }

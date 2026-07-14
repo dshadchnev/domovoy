@@ -1,5 +1,5 @@
 # === Test-All.ps1 — запуск полной проверки системы ===
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 $results = @{}
 
 Write-Host "Domovoy Full Test Suite" -ForegroundColor Cyan
