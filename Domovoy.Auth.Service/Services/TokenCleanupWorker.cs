@@ -24,7 +24,7 @@ public class TokenCleanupWorker : BackgroundService
                 using var scope = _sp.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
 
-                // 1️⃣ Очистка истекших refresh токенов (старше 7 дней)
+                // Очистка истекших refresh токенов (старше 7 дней)
                 var expiredTokens = await db.RefreshTokens
                     .Where(r => r.ExpiresAt < DateTime.UtcNow && r.RevokedAt != null)
                     .ToListAsync(stoppingToken);
@@ -35,7 +35,7 @@ public class TokenCleanupWorker : BackgroundService
                     _logger.LogInformation("Очищено {Count} истекших refresh токенов", expiredTokens.Count);
                 }
 
-                // 2️⃣ Очистка отозванных кредов устройств (старше 30 дней)
+                // Очистка отозванных кредов устройств (старше 30 дней)
                 var revokedCredentials = await db.DeviceCredentials
                     .Where(d => d.IsRevoked && d.CreatedAt < DateTime.UtcNow.AddDays(-30))
                     .ToListAsync(stoppingToken);
@@ -46,7 +46,7 @@ public class TokenCleanupWorker : BackgroundService
                     _logger.LogInformation("Очищено {Count} отозванных устройств", revokedCredentials.Count);
                 }
 
-                // 3️⃣ Очистка старых логов аудита (старше 90 дней)
+                // Очистка старых логов аудита (старше 90 дней)
                 var oldAuditLogs = await db.AuditLogs
                     .Where(a => a.CreatedAt < DateTime.UtcNow.AddDays(-90))
                     .ToListAsync(stoppingToken);

@@ -1,4 +1,3 @@
-// Domovoy.Auth.Service/Controllers/DevicesController.cs
 using Microsoft.AspNetCore.Authorization;
 using OpenIddict.Validation.AspNetCore;
 using OpenIddict.Abstractions;
@@ -30,7 +29,7 @@ public class DevicesController : ControllerBase
     }
 
     /// <summary>
-    /// Регистрация нового устройства (ГЕНЕРАЦИЯ СЕКРЕТА) — только здесь!
+    /// Регистрация нового устройства
     /// </summary>
     [HttpPost("register")]
     [ProducesResponseType(typeof(DeviceCredentialResponse), StatusCodes.Status201Created)]
@@ -100,7 +99,7 @@ public class DevicesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> ReceiveTelemetry(string id, [FromBody] JsonElement telemetry)
     {
-        // 🔐 КЛЮЧЕВАЯ ПРОВЕРКА: DeviceId claim == URL ID
+        // DeviceId claim == URL ID
         var tokenDeviceId = User.FindFirstValue("DeviceId")
                           ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
 

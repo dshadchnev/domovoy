@@ -34,4 +34,6 @@ public class DeviceCredential
     public bool IsRevoked { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
+    public string? Protocol { get; set; }
+    public string? Endpoint { get; set; }
 }

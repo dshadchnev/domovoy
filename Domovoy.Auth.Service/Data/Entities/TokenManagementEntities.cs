@@ -51,7 +51,7 @@ public class AuditLog
     public string Resource { get; set; } = default!;
     
     [Column("Result")] 
-    public string Result { get; set; } = default!; // "Success" or "Failure"
+    public string Result { get; set; } = default!; 
     
     [Column("IpAddress")] 
     public string? IpAddress { get; set; }

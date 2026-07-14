@@ -1,0 +1,6 @@
+@Domovoy.MockDevice.Server_HostAddress = http://localhost:5151
+
+GET {{Domovoy.MockDevice.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

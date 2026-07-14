@@ -93,15 +93,19 @@ services:
     restart: unless-stopped
     networks:
       - domovoy_net
+      
   domovoy-rules-engine:
     build:
       context: ..
       dockerfile: Domovoy.RulesEngine.Service/Dockerfile
     container_name: domovoy-rules-engine
     environment:
-      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_ENVIRONMENT=Development # <-- ИЗМЕНЕНО с Production
       - ASPNETCORE_URLS=http://+:8080
       - ConnectionStrings__Default=Host=postgres;Port=5432;Database=domovoy_auth;Username=postgres;Password=postgres
+      - OpenIddict__Issuer=http://domovoy-auth:8080/
+      - OpenIddict__ClientId=domovoy-rules-engine
+      - OpenIddict__ClientSecret=rules-engine-secret
       - Jwt__Secret=your-super-secret-key-min-32-chars-long-for-hs256!!!
       - Jwt__Issuer=domovoy
       - Jwt__Audience=domovoy-users
@@ -113,6 +117,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
+      domovoy-auth: { condition: service_healthy } 
     networks:
       - domovoy_net
     healthcheck:
@@ -141,6 +146,68 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
+    networks:
+      - domovoy_net
+    healthcheck:
+      test: ["CMD", "/bin/bash", "-c", "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'HTTP/1.1 200 OK'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  domovoy-notification:
+    build:
+      context: ..
+      dockerfile: Domovoy.Notification.Service/Dockerfile
+    container_name: domovoy-notification
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__Default=Host=postgres;Port=5432;Database=domovoy_auth;Username=postgres;Password=postgres
+      - Jwt__Secret=your-super-secret-key-min-32-chars-long-for-hs256!!!
+      - Jwt__Issuer=domovoy
+      - Jwt__Audience=domovoy-users
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__User=admin
+      - RabbitMQ__Pass=admin
+      - Telegram__BotToken=${TELEGRAM_BOT_TOKEN}
+      - Smtp__Host=smtp.gmail.com
+      - Smtp__Port=587
+      - Smtp__User=${SMTP_USER}
+      - Smtp__Pass=${SMTP_PASS}
+      - Smtp__FromEmail=noreply@domovoy.local
+    ports:
+      - "8090:8080"
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks:
+      - domovoy_net
+    healthcheck:
+      test: ["CMD", "/bin/bash", "-c", "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'HTTP/1.1 200 OK'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+  
+  domovoy-dashboard:
+    build:
+      context: ..
+      dockerfile: Domovoy.Dashboard.Service/Dockerfile
+    container_name: domovoy-dashboard
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__Default=Host=postgres;Port=5432;Database=domovoy_auth;Username=postgres;Password=postgres
+      - ConnectionStrings__Redis=redis:6379
+      - Jwt__Secret=your-super-secret-key-min-32-chars-long-for-hs256!!!
+      - Jwt__Issuer=domovoy
+      - Jwt__Audience=domovoy-users
+    ports:
+      - "8091:8080"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
     networks:
       - domovoy_net
     healthcheck:
@@ -204,6 +271,25 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+  
+  domovoy-mock-device:
+    build:
+      context: ..
+      dockerfile: Domovoy.MockDevice.Server/Dockerfile
+    container_name: domovoy-mock-device
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+    ports:
+      - "30001:8080"
+    networks:
+      - domovoy_net
+    healthcheck:
+      test: ["CMD", "/bin/bash", "-c", "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'HTTP/1.1 200 OK'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 volumes:
   pgdata:

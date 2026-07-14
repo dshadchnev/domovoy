@@ -40,6 +40,8 @@ public class DeviceMgmtController : ControllerBase
                 d.NetworkDeviceId,
                 d.Name,
                 d.RoomId.HasValue ? d.RoomId.Value.ToString() : null,
+                d.Protocol,      
+                d.Endpoint,      
                 d.IsRevoked,
                 d.CreatedAt))
             .ToListAsync();
@@ -63,6 +65,8 @@ public class DeviceMgmtController : ControllerBase
             device.NetworkDeviceId,
             device.Name,
             device.RoomId.HasValue ? device.RoomId.Value.ToString() : null,
+            device.Protocol,      
+            device.Endpoint,      
             device.IsRevoked,
             device.CreatedAt));
     }
@@ -80,10 +84,17 @@ public class DeviceMgmtController : ControllerBase
         if (device is null) return NotFound();
 
         Guid? newRoomId = Guid.TryParse(request.RoomId, out var rid) ? rid : null;
-        var isChanged = device.Name != request.Name || device.RoomId != newRoomId;
+
+        // Проверяем, изменились ли какие-то поля
+        var isChanged = device.Name != request.Name
+                     || device.RoomId != newRoomId
+                     || device.Protocol != request.Protocol
+                     || device.Endpoint != request.Endpoint;
 
         device.Name = request.Name;
         device.RoomId = newRoomId;
+        device.Protocol = request.Protocol;    
+        device.Endpoint = request.Endpoint;    
         device.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
@@ -131,5 +142,18 @@ public class DeviceMgmtController : ControllerBase
     }
 }
 
-public record DeviceDto(string NetworkDeviceId, string? Name, string? RoomId, bool IsRevoked, DateTime CreatedAt);
-public record UpdateDeviceRequest(string? Name, string? RoomId);
+
+public record DeviceDto(
+    string NetworkDeviceId,
+    string? Name,
+    string? RoomId,
+    string? Protocol,      
+    string? Endpoint,      
+    bool IsRevoked,
+    DateTime CreatedAt);
+
+public record UpdateDeviceRequest(
+    string? Name,
+    string? RoomId,
+    string? Protocol,     
+    string? Endpoint);     

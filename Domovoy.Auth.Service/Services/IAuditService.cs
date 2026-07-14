@@ -1,22 +1,22 @@
 namespace Domovoy.Auth.Service.Services;
 
 /// <summary>
-/// Service for audit logging of security-related events
+/// Сервис для ведения журнала аудита событий
 /// </summary>
 public interface IAuditService
 {
     /// <summary>
-    /// Log an audit event
+    /// Лог события аудита
     /// </summary>
     Task LogAsync(Guid? userId, string? deviceId, string action, string resource, string result, string? ipAddress = null, string? failureReason = null);
 
     /// <summary>
-    /// Log user action
+    /// Лог действий пользователя
     /// </summary>
     Task LogUserActionAsync(Guid? userId, string action, string result, string? ipAddress = null, string? failureReason = null);
 
     /// <summary>
-    /// Log device action
+    /// Лог действий устройства 
     /// </summary>
     Task LogDeviceActionAsync(Guid? userId, string deviceId, string action, string result, string? ipAddress = null, string? failureReason = null);
 }

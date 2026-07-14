@@ -1,4 +1,4 @@
-﻿using NCalc;
+using NCalc;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -177,7 +177,8 @@ public class RulesController : ControllerBase
 
     private Guid GetUserId()
     {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                       ?? User.FindFirst("sub")?.Value;
         if (!Guid.TryParse(userIdClaim, out var userId))
             throw new UnauthorizedAccessException("Invalid user context");
         return userId;

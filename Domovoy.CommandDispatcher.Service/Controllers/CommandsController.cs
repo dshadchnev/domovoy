@@ -83,7 +83,7 @@ public class CommandsController : ControllerBase
         var hasAccess = await _db.DeviceCredentials
             .AnyAsync(d => d.NetworkDeviceId == command.DeviceId && d.OwnerUserId == userId);
 
-        if (!hasAccess) return NotFound(); // Не раскрываем существование
+        if (!hasAccess) return NotFound(); 
 
         return Ok(new CommandLogDto(
             command.Id, command.DeviceId, command.Command, command.Params,
