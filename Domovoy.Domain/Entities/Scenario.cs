@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -62,5 +62,33 @@ namespace Domovoy.Domain.Entities
 
         // Действия, выполняемые сценарием (один-ко-многим).
         public virtual ICollection<ScenarioAction> Actions { get; set; } = new List<ScenarioAction>();
+
+        // Свойства и методы для DDD в RulesEngine
+        public static Scenario Create(string name, Guid userId, bool isActive = true)
+        {
+            return new Scenario
+            {
+                Id = Guid.NewGuid(),
+                Name = name,
+                UserId = userId,
+                IsActive = isActive,
+                CreatedAt = DateTime.UtcNow
+            };
+        }
+
+        public void AddCondition(ScenarioCondition condition)
+        {
+            Conditions.Add(condition);
+        }
+
+        public void AddAction(ScenarioAction action)
+        {
+            Actions.Add(action);
+        }
+
+        public void Toggle()
+        {
+            IsActive = !IsActive;
+        }
     }
 }

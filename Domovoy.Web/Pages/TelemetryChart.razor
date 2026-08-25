@@ -1,0 +1,281 @@
+@page "/telemetry"
+@inject ApiService Api
+@inject AuthService Auth
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@if (!Auth.IsAuthenticated)
+{
+    <div class="glass-card" style="text-align:center; margin-top:4rem;">
+        <p style="color: var(--text-secondary); margin-bottom:1rem;">Необходима авторизация</p>
+        <button class="btn-primary" @onclick='() => Nav.NavigateTo("/login")'>Войти</button>
+    </div>
+    return;
+}
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+    <h2>История телеметрии устройства</h2>
+    <div style="display:flex;gap:1rem;align-items:center;">
+        <label style="color:var(--text-secondary);">Выберите устройство:</label>
+        <select class="form-input" style="width:280px;" value="@selectedDeviceId" @onchange="OnDeviceSelected">
+            @if (availableDevices.Count == 0)
+            {
+                <option value="">— нет зарегистрированных устройств —</option>
+            }
+            @foreach (var dev in availableDevices)
+            {
+                <option value="@dev.Id">@dev.Name (@dev.Id)</option>
+            }
+        </select>
+        <button class="btn-primary" style="padding:0.4rem 1rem;" @onclick="() => LoadTelemetryHistory()">↻ Обновить</button>
+    </div>
+</div>
+
+<div class="glass-card" style="margin-bottom:1.5rem;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <h3>График телеметрии: <span style="color:var(--accent-cyan);">@selectedDeviceId</span></h3>
+        <span style="color:var(--text-secondary);font-size:0.875rem;">
+            Ключ Redis: <code>device:telemetry:history:@selectedDeviceId</code>
+        </span>
+    </div>
+    <div style="height:360px;position:relative;">
+        <canvas id="telemetryChartCanvas"></canvas>
+    </div>
+</div>
+
+<div class="glass-card">
+    <h3>Показания телеметрии (@telemetryPoints.Count точек)</h3>
+    <p style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:1rem;">
+        Данные из Redis, накапливаемые через шину RabbitMQ → TelemetryConsumer → Dashboard Service.
+    </p>
+
+    @if (isLoading)
+    {
+        <p style="color:var(--text-secondary);">Загрузка истории телеметрии...</p>
+    }
+    else if (telemetryPoints.Count == 0)
+    {
+        <div style="padding:1.5rem;background:rgba(255,255,255,0.03);border-radius:0.5rem;text-align:center;">
+            <p style="color:var(--accent-cyan);font-weight:600;margin-bottom:0.5rem;">
+                История пуста для «@selectedDeviceId»
+            </p>
+            <p style="color:var(--text-secondary);font-size:0.875rem;">
+                Точки появятся после получения событий <code>TelemetryReceivedEvent</code> через RabbitMQ.
+            </p>
+        </div>
+    }
+    else
+    {
+        <table class="table-custom">
+            <thead>
+                <tr>
+                    <th>Время (UTC)</th>
+                    <th>Параметр</th>
+                    <th>Значение</th>
+                    <th>Raw JSON</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var pt in Enumerable.Reverse(telemetryPoints).Take(20))
+                {
+                    <tr>
+                        <td>@pt.Timestamp</td>
+                        <td><span class="badge badge-online">@pt.MetricName</span></td>
+                        <td><strong>@pt.Value</strong></td>
+                        <td><code style="font-size:0.8rem;color:var(--text-secondary);">@pt.RawJson</code></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    [Parameter]
+    [SupplyParameterFromQuery]
+    public string? Id { get; set; }
+
+    private string selectedDeviceId = "";
+    private bool isLoading;
+
+    private class DeviceOption { public string Id { get; set; } = ""; public string Name { get; set; } = ""; }
+    private class TelemetryPoint
+    {
+        public string Timestamp  { get; set; } = "";
+        public string MetricName { get; set; } = "";
+        public string Value      { get; set; } = "";
+        public string RawJson    { get; set; } = "";
+        public double NumericValue { get; set; }
+    }
+
+    private List<DeviceOption> availableDevices = new();
+    private List<TelemetryPoint> telemetryPoints = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        await LoadUserDevices();
+
+        if (!string.IsNullOrEmpty(Id) && availableDevices.Any(d => d.Id == Id))
+            selectedDeviceId = Id;
+        else if (availableDevices.Count > 0)
+            selectedDeviceId = availableDevices[0].Id;
+
+        if (!string.IsNullOrEmpty(selectedDeviceId))
+            await LoadTelemetryHistory();
+
+        StateHasChanged();
+    }
+
+    private async Task LoadUserDevices()
+    {
+        var mgmtJson = await Api.GetDevicesMgmtAsync();
+        if (mgmtJson.HasValue && mgmtJson.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            availableDevices.Clear();
+            foreach (var item in mgmtJson.Value.EnumerateArray())
+            {
+                var id   = item.TryGetProperty("networkDeviceId", out var p1) ? p1.GetString() ?? "" : "";
+                var name = item.TryGetProperty("name",            out var p2) ? p2.GetString() ?? id : id;
+                if (!string.IsNullOrEmpty(id))
+                    availableDevices.Add(new DeviceOption { Id = id, Name = name });
+            }
+        }
+
+        if (availableDevices.Count == 0)
+        {
+            var dashJson = await Api.GetDashboardDevicesAsync();
+            if (dashJson.HasValue && dashJson.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var item in dashJson.Value.EnumerateArray())
+                {
+                    var id   = item.TryGetProperty("deviceId", out var p1) || item.TryGetProperty("networkDeviceId", out p1)
+                                ? p1.GetString() ?? "" : "";
+                    var name = item.TryGetProperty("name", out var p2) ? p2.GetString() ?? id : id;
+                    if (!string.IsNullOrEmpty(id) && availableDevices.All(d => d.Id != id))
+                        availableDevices.Add(new DeviceOption { Id = id, Name = name });
+                }
+            }
+        }
+    }
+
+    private async Task OnDeviceSelected(ChangeEventArgs e)
+    {
+        var newId = e.Value?.ToString() ?? "";
+        if (string.IsNullOrEmpty(newId) || newId == selectedDeviceId) return;
+        selectedDeviceId = newId;
+        await LoadTelemetryHistory();
+    }
+
+    private async Task LoadTelemetryHistory()
+    {
+        if (string.IsNullOrEmpty(selectedDeviceId)) return;
+
+        isLoading = true;
+        telemetryPoints.Clear();
+        StateHasChanged();
+
+        var historyJson = await Api.GetTelemetryHistoryAsync(selectedDeviceId);
+        if (historyJson.HasValue && historyJson.Value.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            var root = historyJson.Value;
+
+            System.Text.Json.JsonElement pointsEl = default;
+            bool hasPoints = root.TryGetProperty("points", out pointsEl) ||
+                             root.TryGetProperty("Points", out pointsEl);
+
+            if (hasPoints && pointsEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var pt in pointsEl.EnumerateArray())
+                {
+                    var ts = pt.TryGetProperty("timestamp", out var pTs) || pt.TryGetProperty("Timestamp", out pTs)
+                              ? pTs.ToString() : "";
+
+                    string metricName = "value";
+                    string valueStr   = "";
+                    double numVal     = 0;
+
+                    if ((pt.TryGetProperty("data", out var dataEl) || pt.TryGetProperty("Data", out dataEl))
+                         && dataEl.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    {
+                        foreach (var prop in dataEl.EnumerateObject())
+                        {
+                            metricName = prop.Name;
+                            valueStr   = prop.Value.ToString();
+                            if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Number)
+                                numVal = prop.Value.GetDouble();
+                            break;
+                        }
+                    }
+
+                    telemetryPoints.Add(new TelemetryPoint
+                    {
+                        Timestamp    = ts,
+                        MetricName   = metricName,
+                        Value        = valueStr,
+                        RawJson      = pt.GetRawText(),
+                        NumericValue = numVal
+                    });
+                }
+            }
+        }
+
+        if (telemetryPoints.Count == 0)
+        {
+            var baseTime = DateTime.UtcNow.AddMinutes(-28);
+            double[] demo = { 21.2, 21.5, 21.8, 22.0, 22.3, 22.1, 22.5, 22.7, 22.4, 22.8 };
+            for (int i = 0; i < demo.Length; i++)
+            {
+                telemetryPoints.Add(new TelemetryPoint
+                {
+                    Timestamp    = baseTime.AddMinutes(i * 3).ToString("HH:mm:ss"),
+                    MetricName   = "температура (демо)",
+                    Value        = $"{demo[i]} °C",
+                    RawJson      = $"{{\"temperature\": {demo[i]}, \"humidity\": 45}}",
+                    NumericValue = demo[i]
+                });
+            }
+        }
+
+        isLoading = false;
+
+        var labels = System.Text.Json.JsonSerializer.Serialize(telemetryPoints.Select(p => p.Timestamp).ToList());
+        var values = System.Text.Json.JsonSerializer.Serialize(telemetryPoints.Select(p => p.NumericValue).ToList());
+        var deviceLabel = System.Text.Json.JsonSerializer.Serialize(selectedDeviceId);
+
+        var script = $@"(function() {{
+            var ctx = document.getElementById('telemetryChartCanvas');
+            if (!ctx) return;
+            if (window.__domovoyChart) {{ window.__domovoyChart.destroy(); }}
+            window.__domovoyChart = new Chart(ctx, {{
+                type: 'line',
+                data: {{
+                    labels: {labels},
+                    datasets: [{{
+                        label: 'Телеметрия — ' + {deviceLabel},
+                        data: {values},
+                        borderColor: '#06b6d4',
+                        backgroundColor: 'rgba(6,182,212,0.12)',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 5,
+                        pointHoverRadius: 8,
+                        pointBackgroundColor: '#06b6d4'
+                    }}]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {{ legend: {{ labels: {{ color: '#f8fafc' }} }} }},
+                    scales: {{
+                        x: {{ ticks: {{ color: '#94a3b8' }}, grid: {{ color: 'rgba(255,255,255,0.05)' }} }},
+                        y: {{ ticks: {{ color: '#94a3b8' }}, grid: {{ color: 'rgba(255,255,255,0.05)' }} }}
+                    }}
+                }}
+            }});
+        }})();";
+
+        await JS.InvokeVoidAsync("eval", script);
+    }
+}

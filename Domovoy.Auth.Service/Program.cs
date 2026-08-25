@@ -20,9 +20,7 @@ using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Note: не переключаем среду принудительно — используем реальный ASPNETCORE_ENVIRONMENT
-
-// DataProtection (кроссплатформенный путь: работает и в Windows, и в Linux/Docker)
+// DataProtection persistence configuration for Docker/Linux environments
 var dpKeysPath = Path.Combine(Path.GetTempPath(), "domovoy-dataprotection");
 builder.Services.AddDataProtection()
     .SetApplicationName("Domovoy.Auth.Service")
@@ -62,7 +60,7 @@ builder.Services.AddOpenIddict()
         // Register supported scopes
         opts.RegisterScopes(OpenIddictConstants.Scopes.OpenId, OpenIddictConstants.Scopes.Profile);
 
-        // В Docker/Dev используем встроенные тестовые сертификаты (без файлов/паролей)
+        // Development signing/encryption certificates (not for production)
         opts.AddDevelopmentEncryptionCertificate()
             .AddDevelopmentSigningCertificate();
 
@@ -121,9 +119,8 @@ builder.Services.AddMassTransit(x =>
         cfg.UseMessageRetry(r => r.Interval(3, TimeSpan.FromSeconds(5)));
     });
 });
-// AddMassTransitHostedService() удален: в v8+ он регистрируется автоматически
 
-// Регистрация сервисов
+// Register Application Services
 builder.Services.AddScoped<IUserAuthService, UserAuthService>();
 builder.Services.AddScoped<IDeviceAuthService, DeviceAuthService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
@@ -153,17 +150,17 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-// Безопасное применение миграций
+// Auto-run DB Migrations
 using (var scope = app.Services.CreateScope())
 {
     try
     {
         scope.ServiceProvider.GetRequiredService<AuthDbContext>().Database.Migrate();
-        app.Logger.LogInformation("✅ Migrations applied");
+        app.Logger.LogInformation("Migrations applied successfully.");
     }
     catch (Exception ex)
     {
-        app.Logger.LogError(ex, "❌ Migration failed");
+        app.Logger.LogError(ex, "Migration failed.");
         throw;
     }
 }
@@ -173,7 +170,6 @@ if (app.Environment.IsDevelopment())
     app.UseDeveloperExceptionPage();
     app.UseSwagger();
     app.UseSwaggerUI();
-    // Перенаправление с корня на Swagger
     app.MapGet("/", () => Results.Redirect("/swagger"));
 }
 
@@ -184,14 +180,14 @@ app.MapControllers();
 
 try
 {
-    Console.WriteLine("🚀 Starting Domovoy Auth Service...");
+    Console.WriteLine("Starting Domovoy Auth Service...");
     app.Run();
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"💥 FATAL STARTUP CRASH: {ex.GetType().Name}");
-    Console.WriteLine($"📜 Message: {ex.Message}");
-    Console.WriteLine($"🔍 Inner: {ex.InnerException?.Message}");
-    Console.WriteLine($"📑 Stack: {ex.StackTrace}");
+    Console.WriteLine($"FATAL STARTUP CRASH: {ex.GetType().Name}");
+    Console.WriteLine($"Message: {ex.Message}");
+    Console.WriteLine($"Inner: {ex.InnerException?.Message}");
+    Console.WriteLine($"Stack: {ex.StackTrace}");
     throw; 
 }

@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 
 namespace Domovoy.Notification.Service.Data;
 
@@ -23,18 +23,47 @@ public class NotificationDbContext : DbContext
 
         modelBuilder.Entity<NotificationSetting>(entity =>
         {
-            entity.HasIndex(s => new { s.UserId, s.EventType }).IsUnique();
+            entity.ToTable("notificationsettings");
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.UserId).HasColumnName("userid");
+            entity.Property(e => e.EventType).HasColumnName("eventtype");
+            entity.Property(e => e.TelegramEnabled).HasColumnName("telegramenabled");
+            entity.Property(e => e.EmailEnabled).HasColumnName("emailenabled");
+            entity.Property(e => e.TelegramBotToken).HasColumnName("telegrambottoken");
+            entity.Property(e => e.TelegramChatId).HasColumnName("telegramchatid");
+            entity.Property(e => e.SmtpHost).HasColumnName("smtphost");
+            entity.Property(e => e.SmtpPort).HasColumnName("smtpport");
+            entity.Property(e => e.SmtpUser).HasColumnName("smtpuser");
+            entity.Property(e => e.SmtpPass).HasColumnName("smtppass");
+            entity.Property(e => e.SmtpFromEmail).HasColumnName("smtpfromemail");
+            entity.Property(e => e.RecipientEmail).HasColumnName("recipientemail");
+            entity.Property(e => e.CreatedAt).HasColumnName("createdat");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updatedat");
         });
 
         modelBuilder.Entity<UserNotificationChannel>(entity =>
         {
-            entity.HasIndex(c => new { c.UserId, c.ChannelType, c.ChannelValue }).IsUnique();
+            entity.ToTable("usernotificationchannels");
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.UserId).HasColumnName("userid");
+            entity.Property(e => e.ChannelType).HasColumnName("channeltype");
+            entity.Property(e => e.ChannelValue).HasColumnName("channelvalue");
+            entity.Property(e => e.IsActive).HasColumnName("isactive");
+            entity.Property(e => e.CreatedAt).HasColumnName("createdat");
         });
 
         modelBuilder.Entity<NotificationLog>(entity =>
         {
-            entity.HasIndex(l => l.UserId);
-            entity.HasIndex(l => l.CreatedAt);
+            entity.ToTable("notificationlogs");
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.UserId).HasColumnName("userid");
+            entity.Property(e => e.EventType).HasColumnName("eventtype");
+            entity.Property(e => e.Channel).HasColumnName("channel");
+            entity.Property(e => e.Message).HasColumnName("message");
+            entity.Property(e => e.Status).HasColumnName("status");
+            entity.Property(e => e.ErrorMessage).HasColumnName("errormessage");
+            entity.Property(e => e.CreatedAt).HasColumnName("createdat");
+            entity.Property(e => e.SentAt).HasColumnName("sentat");
         });
     }
 }

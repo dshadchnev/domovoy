@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -89,5 +89,26 @@ namespace Domovoy.Domain.Entities
 
         // Логи событий устройства (один-ко-многим).
         public virtual ICollection<DeviceLog> DeviceLogs { get; set; } = new List<DeviceLog>();
+
+        // Свойства и методы для DDD в DeviceManager
+        public string? Protocol { get; set; }
+        public string? Endpoint { get; set; }
+        public bool IsRevoked { get; set; }
+        public DateTime? UpdatedAt { get; set; }
+
+        public void UpdateDetails(string name, Guid? roomId, string? protocol, string? endpoint)
+        {
+            Name = name;
+            RoomId = roomId;
+            Protocol = protocol;
+            Endpoint = endpoint;
+            UpdatedAt = DateTime.UtcNow;
+        }
+
+        public void Revoke()
+        {
+            IsRevoked = true;
+            UpdatedAt = DateTime.UtcNow;
+        }
     }
 }
