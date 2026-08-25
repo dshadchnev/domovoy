@@ -27,7 +27,7 @@ public class RuleTriggeredConsumer : IConsumer<RuleTriggeredEvent>
     public async Task Consume(ConsumeContext<RuleTriggeredEvent> context)
     {
         var evt = context.Message;
-        _logger.LogInformation("🔔 Received RuleTriggeredEvent: Rule='{RuleName}', Device='{DeviceId}', Val='{Value}', Cmd='{Command}'",
+        _logger.LogInformation("Received RuleTriggeredEvent: Rule='{RuleName}', Device='{DeviceId}', Val='{Value}', Cmd='{Command}'",
             evt.RuleName, evt.DeviceId, evt.Value, evt.Command);
 
         await using var db = await _dbFactory.CreateDbContextAsync();
@@ -44,7 +44,7 @@ public class RuleTriggeredConsumer : IConsumer<RuleTriggeredEvent>
 
         if (settings == null || (!settings.TelegramEnabled && !settings.EmailEnabled))
         {
-            _logger.LogInformation("ℹ️ No active notification settings found for RuleTriggered");
+            _logger.LogInformation("No active notification settings found for RuleTriggered");
             return;
         }
 
@@ -67,7 +67,7 @@ public class RuleTriggeredConsumer : IConsumer<RuleTriggeredEvent>
                     from = !string.IsNullOrWhiteSpace(user) && user.Contains("@") ? user : settings.RecipientEmail;
                 }
 
-                var html = $"<h3>🏠 Сработало правило автоматизации «{evt.RuleName}»</h3>" +
+                var html = $"<h3> Сработало правило автоматизации «{evt.RuleName}»</h3>" +
                            $"<p><b>Устройство:</b> {evt.DeviceId}</p>" +
                            $"<p><b>Значение телеметрии:</b> {evt.Value}</p>" +
                            $"<p><b>Выполненная команда:</b> {evt.Command}</p>" +
@@ -85,11 +85,11 @@ public class RuleTriggeredConsumer : IConsumer<RuleTriggeredEvent>
                     Status = "sent",
                     SentAt = DateTime.UtcNow
                 });
-                _logger.LogInformation("✅ [Success] Email rule notification delivered to {Email}", settings.RecipientEmail);
+                _logger.LogInformation("[Success] Email rule notification delivered to {Email}", settings.RecipientEmail);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Failed to send email notification for RuleTriggered to {Email}", settings.RecipientEmail);
+                _logger.LogError(ex, "Failed to send email notification for RuleTriggered to {Email}", settings.RecipientEmail);
                 db.NotificationLogs.Add(new NotificationLog
                 {
                     Id = Guid.NewGuid(),
@@ -112,10 +112,10 @@ public class RuleTriggeredConsumer : IConsumer<RuleTriggeredEvent>
                 if (!string.IsNullOrEmpty(botToken))
                 {
                     var bot = new TelegramBotClient(botToken);
-                    var text = $"🏠 *Сработало правило*: {evt.RuleName}\n\n" +
-                               $"📱 *Устройство*: `{evt.DeviceId}`\n" +
-                               $"📊 *Значение*: `{evt.Value}`\n" +
-                               $"⚡ *Команда*: `{evt.Command}`";
+                    var text = $" *Сработало правило*: {evt.RuleName}\n\n" +
+                               $" *Устройство*: `{evt.DeviceId}`\n" +
+                               $" *Значение*: `{evt.Value}`\n" +
+                               $" *Команда*: `{evt.Command}`";
 
                     await bot.SendMessage(settings.TelegramChatId, text, parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
 
@@ -129,12 +129,12 @@ public class RuleTriggeredConsumer : IConsumer<RuleTriggeredEvent>
                         Status = "sent",
                         SentAt = DateTime.UtcNow
                     });
-                    _logger.LogInformation("✅ [Success] Telegram rule notification delivered to {ChatId}", settings.TelegramChatId);
+                    _logger.LogInformation(" [Success] Telegram rule notification delivered to {ChatId}", settings.TelegramChatId);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Failed to send Telegram notification to {ChatId}", settings.TelegramChatId);
+                _logger.LogError(ex, " Failed to send Telegram notification to {ChatId}", settings.TelegramChatId);
                 db.NotificationLogs.Add(new NotificationLog
                 {
                     Id = Guid.NewGuid(),

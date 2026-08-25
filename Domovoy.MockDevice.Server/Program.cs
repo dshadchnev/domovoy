@@ -11,8 +11,8 @@ app.MapPost("/api/command", async (HttpRequest request) =>
     var body = await reader.ReadToEndAsync();
 
     Console.WriteLine("════════════════════════════════════════");
-    Console.WriteLine($"🔔 [{DateTime.UtcNow:HH:mm:ss}] Получена команда!");
-    Console.WriteLine($"📦 Тело запроса: {body}");
+    Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] Получена команда!");
+    Console.WriteLine($" Тело запроса: {body}");
     Console.WriteLine("════════════════════════════════════════");
 
     return Results.Ok(new { status = "executed", receivedAt = DateTime.UtcNow });
