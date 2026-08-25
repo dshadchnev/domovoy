@@ -12,7 +12,7 @@ class Program
 {
     static async Task Main(string[] args)
     {
-        // 🔧 Конфигурация (можно переопределить через args или appsettings.json)
+        // Конфигурация (можно переопределить через args или appsettings.json)
         var config = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
             .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
@@ -26,11 +26,11 @@ class Program
 
         if (deviceSecret == "YOUR_DEVICE_SECRET_HERE")
         {
-            Console.WriteLine("❌ ОШИБКА: Укажите DeviceSecret в appsettings.json или через аргументы: --DeviceSecret=xxx");
+            Console.WriteLine("ОШИБКА: Укажите DeviceSecret в appsettings.json или через аргументы: --DeviceSecret=xxx");
             return;
         }
 
-        Console.WriteLine($"🚀 IoT Simulator запущен | Device: {deviceId} | Interval: {intervalSeconds}с");
+        Console.WriteLine($"IoT Simulator запущен | Device: {deviceId} | Interval: {intervalSeconds}с");
         Console.WriteLine(new string('=', 60));
 
         using var httpClient = new HttpClient { BaseAddress = new Uri(gatewayUrl) };
@@ -45,22 +45,22 @@ class Program
         {
             while (!cts.Token.IsCancellationRequested)
             {
-                // 🔐 Если токена нет или истек, аутентифицируемся
+                // Если токена нет или истек, аутентифицируемся
                 if (string.IsNullOrEmpty(token))
                 {
-                    Console.Write("🔑 Аутентификация устройства... ");
+                    Console.Write("Аутентификация устройства... ");
                     token = await AuthenticateAsync(httpClient, deviceId, deviceSecret);
                     if (string.IsNullOrEmpty(token))
                     {
-                        Console.WriteLine("❌ Не удалось получить токен. Повтор через 10с...");
+                        Console.WriteLine("Не удалось получить токен. Повтор через 10с...");
                         await Task.Delay(10000, cts.Token);
                         continue;
                     }
-                    Console.WriteLine("✅ Успешно");
+                    Console.WriteLine("Успешно");
                     httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
                 }
 
-                // 📡 Генерация и отправка телеметрии
+                // Генерация и отправка телеметрии
                 var telemetry = GenerateTelemetry();
                 var response = await SendTelemetryAsync(httpClient, deviceId, telemetry, cts.Token);
 
@@ -70,12 +70,12 @@ class Program
                 }
                 else if ((int)response.StatusCode == 401)
                 {
-                    Console.WriteLine("⏳ Токен истек. Запрашиваем новый...");
+                    Console.WriteLine("Токен истек. Запрашиваем новый...");
                     token = null; // Принудительная ре-аутентификация на следующей итерации
                 }
                 else
                 {
-                    Console.WriteLine($"⚠️ Ошибка отправки: {response.StatusCode} | {(await response.Content.ReadAsStringAsync())}");
+                    Console.WriteLine($"Ошибка отправки: {response.StatusCode} | {(await response.Content.ReadAsStringAsync())}");
                 }
 
                 await Task.Delay(intervalSeconds * 1000, cts.Token);
@@ -83,11 +83,11 @@ class Program
         }
         catch (OperationCanceledException)
         {
-            Console.WriteLine("\n🛑 Симулятор остановлен пользователем.");
+            Console.WriteLine("\nСимулятор остановлен пользователем.");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"\n💥 Критическая ошибка: {ex.Message}");
+            Console.WriteLine($"\nКритическая ошибка: {ex.Message}");
         }
     }
 
