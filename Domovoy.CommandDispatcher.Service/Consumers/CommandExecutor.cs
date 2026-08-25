@@ -27,7 +27,7 @@ public class CommandExecutor : IConsumer<ExecuteCommandEvent>
     public async Task Consume(ConsumeContext<ExecuteCommandEvent> context)
     {
         var command = context.Message;
-        _logger.LogInformation("⚡ Executing command {Command} for {DeviceId}",
+        _logger.LogInformation("Executing command {Command} for {DeviceId}",
             command.Command, command.DeviceId);
 
         await using var db = await _dbFactory.CreateDbContextAsync();
@@ -53,7 +53,7 @@ public class CommandExecutor : IConsumer<ExecuteCommandEvent>
             log.ErrorMessage = "Device not found";
             db.CommandLogs.Add(log);
             await db.SaveChangesAsync();
-            _logger.LogWarning("❌ Device {DeviceId} not found", command.DeviceId);
+            _logger.LogWarning("[Warning] Device {DeviceId} not found", command.DeviceId);
             return;
         }
 
@@ -83,7 +83,7 @@ public class CommandExecutor : IConsumer<ExecuteCommandEvent>
             log.CompletedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
 
-            _logger.LogInformation("✅ Command {Command} sent to {DeviceId} via {Protocol}",
+            _logger.LogInformation("[Success] Command {Command} sent to {DeviceId} via {Protocol}",
                 command.Command, command.DeviceId, protocol);
         }
         catch (Exception ex)
@@ -94,7 +94,7 @@ public class CommandExecutor : IConsumer<ExecuteCommandEvent>
             log.CompletedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
 
-            _logger.LogError(ex, "❌ Failed to send command {Command} to {DeviceId}",
+            _logger.LogError(ex, "[Error] Failed to send command {Command} to {DeviceId}",
                 command.Command, command.DeviceId);
 
             throw;
@@ -128,7 +128,7 @@ public class CommandExecutor : IConsumer<ExecuteCommandEvent>
             throw new InvalidOperationException("MQTT topic not configured for device");
 
         // TODO: Интеграция с MQTT брокером через MQTTnet
-        _logger.LogInformation("📤 MQTT publish to {Topic}: {Command}", endpoint, command.Command);
+        _logger.LogInformation("[MQTT] Publish to {Topic}: {Command}", endpoint, command.Command);
         return Task.CompletedTask;
     }
 
@@ -138,7 +138,7 @@ public class CommandExecutor : IConsumer<ExecuteCommandEvent>
             throw new InvalidOperationException("Zigbee endpoint not configured for device");
 
         // TODO: Интеграция с Zigbee Coordinator
-        _logger.LogInformation("📤 Zigbee command to {Endpoint}: {Command}", endpoint, command.Command);
+        _logger.LogInformation("[Zigbee] Command to {Endpoint}: {Command}", endpoint, command.Command);
         return Task.CompletedTask;
     }
 }

@@ -1,0 +1,159 @@
+@page "/commands"
+@inject ApiService Api
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+@if (!Auth.IsAuthenticated)
+{
+    <div class="glass-card" style="text-align:center; margin-top:4rem;">
+        <p style="color: var(--text-secondary); margin-bottom:1rem;">Необходима авторизация</p>
+        <button class="btn-primary" @onclick='() => Nav.NavigateTo("/login")'>Войти</button>
+    </div>
+    return;
+}
+
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+    <h2>История отправленных команд</h2>
+    <button class="btn-primary" @onclick="LoadCommands">↻ Обновить</button>
+</div>
+
+<div class="glass-card">
+    <h3>Сработавшие команды и действия на устройствах</h3>
+    <p style="color:var(--text-secondary); font-size:0.875rem; margin-bottom:1.5rem;">
+        Отображает команды, отправленные автоматическими правилами или пользователем через сервис управления командами.
+    </p>
+
+    @if (isLoading)
+    {
+        <p style="color:var(--text-secondary);">Загрузка журнала команд...</p>
+    }
+    else if (commands.Count == 0)
+    {
+        <div style="padding:1.5rem; background:rgba(255,255,255,0.03); border-radius:0.5rem; text-align:center;">
+            <p style="color:var(--accent-cyan); font-weight:600; margin-bottom:0.5rem;">Команды ещё не отправлялись</p>
+            <p style="color:var(--text-secondary); font-size:0.875rem;">
+                Команды отправляются автоматически при срабатывании активных правил или в ответ на события телеметрии.
+            </p>
+        </div>
+    }
+    else
+    {
+        <table class="table-custom">
+            <thead>
+                <tr>
+                    <th>Время (UTC)</th>
+                    <th>Целевое устройство</th>
+                    <th>Команда</th>
+                    <th>Endpoint</th>
+                    <th>Статус</th>
+                    <th>Информация / Результат</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in commands)
+                {
+                    <tr>
+                        <td>@c.CreatedAt</td>
+                        <td><code>@c.DeviceId</code></td>
+                        <td><span class="badge badge-online" style="background:var(--accent-indigo);">@c.Command</span></td>
+                        <td><code style="font-size:0.8rem; color:var(--text-secondary);">@(string.IsNullOrEmpty(c.Endpoint) ? "http://localhost" : c.Endpoint)</code></td>
+                        <td>
+                            @if (c.Status.Equals("success", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="badge badge-online">УСПЕШНО</span>
+                            }
+                            else if (c.Status.Equals("pending", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="badge" style="background:var(--accent-amber); color:#000;">В ОЖИДАНИИ</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-offline">ОШИБКА</span>
+                            }
+                        </td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(c.ErrorMessage))
+                            {
+                                <span style="color:var(--accent-rose); font-size:0.8rem;">⚠️ @c.ErrorMessage</span>
+                            }
+                            else
+                            {
+                                <span style="color:var(--accent-emerald); font-size:0.8rem;">✅ Команда успешно выполнена</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private bool isLoading;
+
+    private class CommandLogItem
+    {
+        public string DeviceId { get; set; } = "";
+        public string Command { get; set; } = "";
+        public string Params { get; set; } = "";
+        public string SourceRuleId { get; set; } = "";
+        public string Status { get; set; } = "pending";
+        public string ErrorMessage { get; set; } = "";
+        public string Endpoint { get; set; } = "";
+        public string CreatedAt { get; set; } = "";
+    }
+
+    private List<CommandLogItem> commands = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadCommands();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadCommands()
+    {
+        isLoading = true;
+        var res = await Api.GetRecentCommandsAsync(50);
+        commands.Clear();
+
+        if (res.HasValue && res.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            foreach (var item in res.Value.EnumerateArray())
+            {
+                var dev = GetStr(item, "deviceId", "DeviceId");
+                var cmd = GetStr(item, "command", "Command");
+                var prm = GetStr(item, "params", "Params");
+                var src = GetStr(item, "sourceRuleId", "SourceRuleId");
+                var st  = GetStr(item, "status", "Status");
+                var err = GetStr(item, "errorMessage", "ErrorMessage");
+                var ep  = GetStr(item, "endpoint", "Endpoint");
+                var ca  = GetStr(item, "createdAt", "CreatedAt");
+
+                commands.Add(new CommandLogItem
+                {
+                    DeviceId = dev,
+                    Command = cmd,
+                    Params = prm,
+                    SourceRuleId = src,
+                    Status = string.IsNullOrEmpty(st) ? "pending" : st,
+                    ErrorMessage = err,
+                    Endpoint = ep,
+                    CreatedAt = ca
+                });
+            }
+        }
+
+        isLoading = false;
+    }
+
+    private static string GetStr(System.Text.Json.JsonElement el, string p1, string p2)
+    {
+        if (el.TryGetProperty(p1, out var val) && val.ValueKind == System.Text.Json.JsonValueKind.String) return val.GetString() ?? "";
+        if (el.TryGetProperty(p2, out val) && val.ValueKind == System.Text.Json.JsonValueKind.String) return val.GetString() ?? "";
+        return "";
+    }
+}

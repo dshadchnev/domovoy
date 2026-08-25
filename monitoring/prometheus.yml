@@ -1,0 +1,44 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'domovoy-gateway'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['domovoy-gateway:8080']
+
+  - job_name: 'domovoy-auth'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['domovoy-auth:8080']
+
+  - job_name: 'domovoy-device-manager'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['domovoy-device-manager:8080']
+
+  - job_name: 'domovoy-rules-engine'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['domovoy-rules-engine:8080']
+
+  - job_name: 'domovoy-command-dispatcher'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['domovoy-command-dispatcher:8080']
+
+  - job_name: 'domovoy-notification'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['domovoy-notification:8080']
+
+  - job_name: 'domovoy-dashboard'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['domovoy-dashboard:8080']
+
+  - job_name: 'domovoy-devices'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['domovoy-devices:8080']

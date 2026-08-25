@@ -1,0 +1,156 @@
+@page "/"
+@inject ApiService Api
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<h2 style="margin-bottom: 1.5rem;">Обзор системы</h2>
+
+@if (!Auth.IsAuthenticated)
+{
+    <div class="glass-card" style="text-align:center; margin-top:4rem;">
+        <p style="color: var(--text-secondary); margin-bottom:1rem;">Необходима авторизация</p>
+        <button class="btn-primary" @onclick='() => Nav.NavigateTo("/login")'>Войти</button>
+    </div>
+    return;
+}
+
+<div class="grid-cols-4" style="margin-bottom: 2rem;">
+    <a href="devices" class="glass-card" style="text-decoration:none; cursor:pointer; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+        <div class="kpi-title">Всего устройств ↗</div>
+        <div class="kpi-value" style="color: var(--accent-cyan);">@totalDevices</div>
+    </a>
+    <a href="devices" class="glass-card" style="text-decoration:none; cursor:pointer; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+        <div class="kpi-title">Активных устройств ↗</div>
+        <div class="kpi-value" style="color: var(--accent-emerald);">@activeDevices</div>
+    </a>
+    <a href="rules" class="glass-card" style="text-decoration:none; cursor:pointer; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+        <div class="kpi-title">Активных правил ↗</div>
+        <div class="kpi-value" style="color: var(--accent-indigo);">@activeRules</div>
+    </a>
+    <a href="commands" class="glass-card" style="text-decoration:none; cursor:pointer; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+        <div class="kpi-title">Команд за сегодня ↗</div>
+        <div class="kpi-value" style="color: var(--accent-amber);">@commandsToday</div>
+    </a>
+</div>
+
+<div class="glass-card">
+    <h3>Список активных устройств и телеметрии</h3>
+    @if (isLoading)
+    {
+        <p style="color: var(--text-secondary); margin-top: 1rem;">Загрузка списка устройств...</p>
+    }
+    else if (devicesList.Count == 0)
+    {
+        <p style="color: var(--text-secondary); margin-top: 1rem;">У вас пока нет зарегистрированных устройств. Добавьте их в разделе «Устройства».</p>
+    }
+    else
+    {
+        <table class="table-custom">
+            <thead>
+                <tr>
+                    <th>ID устройства (Network ID)</th>
+                    <th>Название</th>
+                    <th>Протокол</th>
+                    <th>Зарегистрировано</th>
+                    <th>Действие</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var d in devicesList)
+                {
+                    <tr>
+                        <td><code>@d.NetworkDeviceId</code></td>
+                        <td><strong>@d.Name</strong></td>
+                        <td><span class="badge badge-online">@d.Protocol</span></td>
+                        <td>@d.LastSeen</td>
+                        <td>
+                            <a href="telemetry?id=@d.NetworkDeviceId" class="btn-primary" style="padding: 0.3rem 0.75rem; font-size: 0.8rem; text-decoration: none;">График 📈</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private int totalDevices = 0;
+    private int activeDevices = 0;
+    private int activeRules = 0;
+    private int commandsToday = 0;
+    private bool isLoading = true;
+
+    private class DashboardDeviceItem
+    {
+        public string NetworkDeviceId { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Protocol { get; set; } = "HTTP";
+        public string LastSeen { get; set; } = "";
+    }
+
+    private List<DashboardDeviceItem> devicesList = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadDashboardData();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadDashboardData()
+    {
+        isLoading = true;
+
+        var summary = await Api.GetDashboardSummaryAsync();
+        if (summary.HasValue && summary.Value.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            var el = summary.Value;
+            totalDevices  = GetIntProp(el, "totalDevices", "TotalDevices");
+            activeDevices = GetIntProp(el, "activeDevices", "ActiveDevices");
+            activeRules   = GetIntProp(el, "activeRules", "ActiveRules");
+            commandsToday = GetIntProp(el, "commandsToday", "CommandsToday");
+        }
+
+        var mgmtJson = await Api.GetDevicesMgmtAsync();
+        devicesList.Clear();
+
+        if (mgmtJson.HasValue && mgmtJson.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            foreach (var item in mgmtJson.Value.EnumerateArray())
+            {
+                var id   = item.TryGetProperty("networkDeviceId", out var p1) ? p1.GetString() ?? "" : "";
+                var name = item.TryGetProperty("name",            out var p2) ? p2.GetString() ?? id : id;
+                var prot = item.TryGetProperty("protocol",        out var p3) ? p3.GetString() ?? "HTTP" : "HTTP";
+                var reg  = item.TryGetProperty("createdAt",       out var p4) ? p4.GetString() ?? "" : "";
+
+                if (!string.IsNullOrEmpty(id))
+                {
+                    devicesList.Add(new DashboardDeviceItem
+                    {
+                        NetworkDeviceId = id,
+                        Name = name,
+                        Protocol = prot,
+                        LastSeen = reg
+                    });
+                }
+            }
+        }
+
+        if (devicesList.Count > 0)
+        {
+            totalDevices = devicesList.Count;
+            activeDevices = devicesList.Count;
+        }
+
+        isLoading = false;
+    }
+
+    private static int GetIntProp(System.Text.Json.JsonElement el, string name1, string name2)
+    {
+        if (el.TryGetProperty(name1, out var p) && p.ValueKind == System.Text.Json.JsonValueKind.Number) return p.GetInt32();
+        if (el.TryGetProperty(name2, out p) && p.ValueKind == System.Text.Json.JsonValueKind.Number) return p.GetInt32();
+        return 0;
+    }
+}

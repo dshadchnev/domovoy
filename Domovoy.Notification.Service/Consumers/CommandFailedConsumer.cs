@@ -26,35 +26,34 @@ public class CommandFailedConsumer : IConsumer<CommandFailedEvent>
     public async Task Consume(ConsumeContext<CommandFailedEvent> context)
     {
         var evt = context.Message;
-        _logger.LogInformation("⚠️ Processing CommandFailedEvent for device {DeviceId}", evt.DeviceId);
+        _logger.LogInformation("Processing CommandFailedEvent for device {DeviceId}", evt.DeviceId);
 
         await using var db = await _dbFactory.CreateDbContextAsync();
 
-        // Находим владельца устройства
         var device = await db.DeviceCredentials
             .FirstOrDefaultAsync(d => d.NetworkDeviceId == evt.DeviceId);
 
         if (device?.OwnerUserId == null)
         {
-            _logger.LogWarning("️ Device {DeviceId} not found or has no owner", evt.DeviceId);
+            _logger.LogWarning("Device {DeviceId} not found or has no owner", evt.DeviceId);
             return;
         }
 
-        var userId = device.OwnerUserId.Value;
+        var userIdStr = device.OwnerUserId.Value.ToString();
 
         var settings = await db.NotificationSettings
-            .FirstOrDefaultAsync(s => s.UserId == userId && s.EventType == "CommandFailed");
+            .FirstOrDefaultAsync(s => s.UserId == userIdStr && s.EventType == "CommandFailed");
 
         if (settings == null || (!settings.TelegramEnabled && !settings.EmailEnabled))
             return;
 
-        var subject = "⚠️ Ошибка выполнения команды";
+        var subject = "Ошибка выполнения команды";
         var message = $"Устройство: {evt.DeviceId}\n" +
                       $"Команда: {evt.Command}\n" +
                       $"Ошибка: {evt.ErrorMessage}";
 
         var channels = await db.UserNotificationChannels
-            .Where(c => c.UserId == userId && c.IsActive)
+            .Where(c => c.UserId == userIdStr && c.IsActive)
             .ToListAsync();
 
         foreach (var channel in channels)
@@ -71,7 +70,8 @@ public class CommandFailedConsumer : IConsumer<CommandFailedEvent>
 
                 db.NotificationLogs.Add(new NotificationLog
                 {
-                    UserId = userId,
+                    Id = Guid.NewGuid(),
+                    UserId = userIdStr,
                     EventType = "CommandFailed",
                     Channel = channel.ChannelType,
                     Message = message,
@@ -81,11 +81,12 @@ public class CommandFailedConsumer : IConsumer<CommandFailedEvent>
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Failed to send notification for command failure");
+                _logger.LogError(ex, "Failed to send notification for command failure");
 
                 db.NotificationLogs.Add(new NotificationLog
                 {
-                    UserId = userId,
+                    Id = Guid.NewGuid(),
+                    UserId = userIdStr,
                     EventType = "CommandFailed",
                     Channel = channel.ChannelType,
                     Message = message,

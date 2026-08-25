@@ -14,7 +14,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<DeviceManagerDbContext>(opts =>
     opts.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
-// 2. OpenIddict Validation — introspection через Auth Service (для JWE/OpenIddict токенов)
+// 2. OpenIddict Validation - introspection via Auth Service (for JWE/OpenIddict tokens)
 builder.Services.AddOpenIddict()
     .AddValidation(options =>
     {
@@ -27,8 +27,8 @@ builder.Services.AddOpenIddict()
         options.UseAspNetCore();
     });
 
-// 3. Authentication: Policy Scheme — принимает и OpenIddict JWE, и plain HS256 JWT
-//    Выбор схемы по структуре токена: 3 части (xxx.yyy.zzz) = JWT, иначе = OpenIddict JWE
+// 3. Authentication: Policy Scheme - accepts both OpenIddict JWE and plain HS256 JWT
+//    Scheme choice based on token structure: 3 parts (xxx.yyy.zzz) = JWT, otherwise = OpenIddict JWE
 var jwtSecret = builder.Configuration["Jwt:Secret"];
 
 builder.Services.AddAuthentication(options =>
@@ -41,7 +41,7 @@ builder.Services.AddAuthentication(options =>
     options.ForwardDefaultSelector = ctx =>
     {
         var auth = ctx.Request.Headers["Authorization"].FirstOrDefault() ?? "";
-        // Plain JWT = 3 части (header.payload.sig)
+        // Plain JWT = 3 parts (header.payload.sig)
         if (auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
             var token = auth["Bearer ".Length..].Trim();
@@ -63,7 +63,7 @@ builder.Services.AddAuthentication(options =>
         ValidAudiences = new[]
         {
             builder.Configuration["Jwt:Audience"] ?? "domovoy-users",
-            "DomovoyClients"   // fallback для Docker-конфигурации
+            "DomovoyClients"   // fallback for Docker configurations
         },
         IssuerSigningKey = jwtSecret != null
             ? new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
@@ -121,7 +121,7 @@ builder.Services.AddSwaggerGen(opts =>
 
 var app = builder.Build();
 
-// Инициализация схемы БД
+// Ensure DB schema initialized
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<DeviceManagerDbContext>();

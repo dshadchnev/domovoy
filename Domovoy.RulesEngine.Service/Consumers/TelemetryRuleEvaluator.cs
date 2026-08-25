@@ -25,7 +25,7 @@ public class TelemetryRuleEvaluator : IConsumer<TelemetryReceivedEvent>
     public async Task Consume(ConsumeContext<TelemetryReceivedEvent> context)
     {
         var telemetry = context.Message;
-        _logger.LogDebug("🔍 Evaluating rules for {DeviceId}", telemetry.DeviceId);
+        _logger.LogDebug("[Evaluate] Evaluating rules for {DeviceId}", telemetry.DeviceId);
 
         // Парсим данные телеметрии
         var telemetryData = ParseTelemetryData(telemetry.Data);
@@ -44,10 +44,10 @@ public class TelemetryRuleEvaluator : IConsumer<TelemetryReceivedEvent>
             {
                 if (EvaluateRule(rule.Condition, telemetryData))
                 {
-                    _logger.LogInformation("✅ Rule '{RuleName}' triggered for {DeviceId}",
+                    _logger.LogInformation("[Rule] Rule '{RuleName}' triggered for {DeviceId}",
                         rule.Name, telemetry.DeviceId);
 
-                    // Публикуем команду на выполнение
+                    // 1. Публикуем команду на выполнение в диспетчер команд
                     await _bus.Publish(new ExecuteCommandEvent(
                         rule.DeviceId,
                         rule.Command,
@@ -55,8 +55,17 @@ public class TelemetryRuleEvaluator : IConsumer<TelemetryReceivedEvent>
                         rule.Id.ToString(),
                         DateTime.UtcNow));
 
-                    // Опционально: прервать после первого сработавшего правила
-                    // break;
+                    // 2. Публикуем событие срабатывания правила для Notification Service
+                    var userId = Guid.TryParse(rule.UserId, out var uid) ? uid : Guid.Empty;
+                    var tempVal = telemetryData.TryGetValue("temperature", out var t) ? $"{t}°C" : telemetry.Data;
+
+                    await _bus.Publish(new RuleTriggeredEvent(
+                        userId,
+                        rule.Name,
+                        rule.DeviceId,
+                        tempVal,
+                        rule.Command,
+                        DateTime.UtcNow));
                 }
             }
             catch (Exception ex)
@@ -69,7 +78,6 @@ public class TelemetryRuleEvaluator : IConsumer<TelemetryReceivedEvent>
 
     private Dictionary<string, object> ParseTelemetryData(string rawData)
     {
-        // Простой парсер: {"temperature": 23.5, "status": "ON"} → Dictionary
         using var doc = System.Text.Json.JsonDocument.Parse(rawData);
         var result = new Dictionary<string, object>();
 
@@ -89,15 +97,10 @@ public class TelemetryRuleEvaluator : IConsumer<TelemetryReceivedEvent>
 
     private bool EvaluateRule(string condition, Dictionary<string, object> variables)
     {
-        // Используем NCalc для безопасного вычисления выражений
-        // Пример условия: "temperature > 25 && status == 'ON'"
         var expr = new Expression(condition)
         {
             Parameters = variables
         };
-
-        // Добавляем поддержку функций, если нужно
-        // expr.EvaluateFunction += (name, args) => { ... };
 
         var result = expr.Evaluate();
         return result is bool b && b;

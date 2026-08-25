@@ -20,27 +20,59 @@ public class EmailSender : INotificationSender
 
     public async Task SendAsync(string email, string subject, string message)
     {
-        var smtpHost = _configuration["Smtp:Host"] ?? throw new InvalidOperationException("Smtp:Host not configured");
-        var smtpPort = int.Parse(_configuration["Smtp:Port"] ?? "587");
+        var smtpHost = _configuration["Smtp:Host"] ?? "smtp.mail.ru";
+        var smtpPort = int.TryParse(_configuration["Smtp:Port"], out var p) ? p : 465;
         var smtpUser = _configuration["Smtp:User"] ?? "";
         var smtpPass = _configuration["Smtp:Pass"] ?? "";
-        var fromEmail = _configuration["Smtp:FromEmail"] ?? "noreply@domovoy.local";
+        
+        var fromEmail = _configuration["Smtp:FromEmail"];
+        if (string.IsNullOrWhiteSpace(fromEmail) || fromEmail.EndsWith(".local") || !fromEmail.Contains("@"))
+        {
+            fromEmail = !string.IsNullOrWhiteSpace(smtpUser) && smtpUser.Contains("@") ? smtpUser : email;
+        }
 
+        var html = $"<h3>{subject}</h3><p>{message.Replace("\n", "<br/>")}</p>";
+
+        await SendEmailInternalAsync(smtpHost, smtpPort, smtpUser, smtpPass, fromEmail, email, subject, html);
+        _logger.LogInformation("[Success] Email sent to {Email}", email);
+    }
+
+    public static async Task SendEmailInternalAsync(
+        string smtpHost,
+        int smtpPort,
+        string smtpUser,
+        string smtpPass,
+        string fromEmail,
+        string toEmail,
+        string subject,
+        string htmlBody)
+    {
         var mimeMessage = new MimeMessage();
-        mimeMessage.From.Add(MailboxAddress.Parse(fromEmail));
-        mimeMessage.To.Add(MailboxAddress.Parse(email));
+        mimeMessage.From.Add(new MailboxAddress("Домовой Smart Home", fromEmail));
+        mimeMessage.To.Add(MailboxAddress.Parse(toEmail));
         mimeMessage.Subject = $"[Domovoy] {subject}";
         mimeMessage.Body = new TextPart("html")
         {
-            Text = $"<h3>{subject}</h3><p>{message}</p>"
+            Text = htmlBody
         };
 
         using var client = new SmtpClient();
-        await client.ConnectAsync(smtpHost, smtpPort, SecureSocketOptions.StartTls);
-        await client.AuthenticateAsync(smtpUser, smtpPass);
+        
+        // Port 465 = SslOnConnect, Port 587 = StartTls, otherwise Auto
+        var secureOptions = smtpPort == 465
+            ? SecureSocketOptions.SslOnConnect
+            : (smtpPort == 587 ? SecureSocketOptions.StartTls : SecureSocketOptions.Auto);
+
+        client.ServerCertificateValidationCallback = (s, c, h, e) => true;
+
+        await client.ConnectAsync(smtpHost, smtpPort, secureOptions);
+        
+        if (!string.IsNullOrEmpty(smtpUser) && !string.IsNullOrEmpty(smtpPass))
+        {
+            await client.AuthenticateAsync(smtpUser, smtpPass);
+        }
+
         await client.SendAsync(mimeMessage);
         await client.DisconnectAsync(true);
-
-        _logger.LogInformation("✅ Email sent to {Email}", email);
     }
 }

@@ -43,47 +43,47 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> TokenEndpoint()
     {
         var logger = HttpContext.RequestServices.GetRequiredService<ILogger<AuthController>>();
-        logger.LogInformation("🔑 [TokenEndpoint] Request received");
+        logger.LogInformation("[TokenEndpoint] Request received");
         
         var request = HttpContext.GetOpenIddictServerRequest();
-        logger.LogInformation("🔑 [TokenEndpoint] OpenIddict request: {GrantType}", request?.GrantType ?? "null");
+        logger.LogInformation("[TokenEndpoint] OpenIddict request: {GrantType}", request?.GrantType ?? "null");
         
         if (request is null)
         {
-            logger.LogWarning("🔑 [TokenEndpoint] Request is null!");
+            logger.LogWarning("[TokenEndpoint] Request is null!");
             return BadRequest(new { error = "Invalid request" });
         }
 
         if (!request.IsPasswordGrantType())
         {
-            logger.LogWarning("🔑 [TokenEndpoint] Not password grant: {GrantType}", request.GrantType);
+            logger.LogWarning("[TokenEndpoint] Not password grant: {GrantType}", request.GrantType);
             return BadRequest(new { error = "Unsupported grant type" });
         }
 
         var username = request.Username ?? string.Empty;
-        logger.LogInformation("🔑 [TokenEndpoint] Finding user: {Username}", username);
+        logger.LogInformation("[TokenEndpoint] Finding user: {Username}", username);
         
         var user = await _userManager.FindByNameAsync(username)
                    ?? await _userManager.FindByEmailAsync(username);
 
         if (user is null)
         {
-            logger.LogWarning("🔑 [TokenEndpoint] User not found: {Username}", username);
+            logger.LogWarning("[TokenEndpoint] User not found: {Username}", username);
             return Unauthorized();
         }
 
         if (!user.IsActive)
         {
-            logger.LogWarning("🔑 [TokenEndpoint] User inactive: {UserId}", user.Id);
+            logger.LogWarning("[TokenEndpoint] User inactive: {UserId}", user.Id);
             return Unauthorized();
         }
 
         var passwordValid = await _userManager.CheckPasswordAsync(user, request.Password ?? string.Empty);
-        logger.LogInformation("🔑 [TokenEndpoint] Password valid: {Valid}", passwordValid);
+        logger.LogInformation("[TokenEndpoint] Password valid: {Valid}", passwordValid);
         
         if (!passwordValid)
         {
-            logger.LogWarning("🔑 [TokenEndpoint] Invalid password: {UserId}", user.Id);
+            logger.LogWarning("[TokenEndpoint] Invalid password: {UserId}", user.Id);
             return Unauthorized();
         }
 
@@ -107,7 +107,7 @@ public class AuthController : ControllerBase
         foreach (var claim in principal.Claims)
             claim.SetDestinations(OpenIddictConstants.Destinations.AccessToken);
 
-        logger.LogInformation("🔑 [TokenEndpoint] SUCCESS - Token granted: {UserId}", user.Id);
+        logger.LogInformation("[TokenEndpoint] SUCCESS - Token granted: {UserId}", user.Id);
         return SignIn(principal, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
     }
 

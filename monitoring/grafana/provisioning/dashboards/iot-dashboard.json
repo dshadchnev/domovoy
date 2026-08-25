@@ -1,0 +1,90 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "title": "Telemetry Messages Rate (msg/sec)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(rate(telemetry_messages_received_total[1m])) by (device_id)",
+          "legendFormat": "Device {{device_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Telemetry Processing Latency (sec)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "rate(telemetry_processing_duration_seconds_sum[1m]) / rate(telemetry_processing_duration_seconds_count[1m])",
+          "legendFormat": "Avg Latency (sec)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Device Commands Executed (total by status)",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(device_commands_executed_total) by (status)",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Command Execution Latency by Protocol",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "rate(device_command_execution_duration_seconds_sum[1m]) / rate(device_command_execution_duration_seconds_count[1m])",
+          "legendFormat": "{{protocol}} Avg Duration (sec)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "ASP.NET Core HTTP Request Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(rate(http_requests_received_total[1m])) by (job, code)",
+          "legendFormat": "{{job}} [HTTP {{code}}]",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["domovoy", "iot", "aspnetcore"],
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Domovoy IoT Microservices Dashboard",
+  "uid": "domovoy-iot-metrics"
+}

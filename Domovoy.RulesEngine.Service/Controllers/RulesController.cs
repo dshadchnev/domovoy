@@ -69,7 +69,7 @@ public class RulesController : ControllerBase
         _db.Rules.Add(rule);
         await _db.SaveChangesAsync();
 
-        _logger.LogInformation("📝 Rule created: {RuleId} for {DeviceId}", rule.Id, rule.DeviceId);
+        _logger.LogInformation("[Success] Rule created: {RuleId} for {DeviceId}", rule.Id, rule.DeviceId);
         return CreatedAtAction(nameof(GetRule), new { id = rule.Id }, new RuleDto(rule.Id, rule.Name, rule.DeviceId, rule.Condition, rule.Command, rule.CommandParams, rule.IsActive, rule.Priority, rule.CreatedAt));
     }
 

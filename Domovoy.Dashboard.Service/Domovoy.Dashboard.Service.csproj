@@ -17,6 +17,11 @@
     <PackageReference Include="StackExchange.Redis" Version="2.7.*" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.*" />
     <PackageReference Include="AspNetCore.HealthChecks.Redis" Version="8.0.1" />
+    <PackageReference Include="prometheus-net.AspNetCore" Version="8.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Domovoy.Shared\Domovoy.Shared.csproj" />
   </ItemGroup>
 
 </Project>
