@@ -41,12 +41,12 @@ public class ClientRegistrationWorker(IServiceProvider sp, ILogger<ClientRegistr
             if (client == null)
             {
                 await manager.CreateAsync(clientDescriptor, cancellationToken);
-                _logger.LogInformation("✅ Client 'domovoy-client' registered");
+                _logger.LogInformation("[Success] Client 'domovoy-client' registered");
             }
             else
             {
                 await manager.UpdateAsync(client, clientDescriptor, cancellationToken);
-                _logger.LogInformation("✅ Client 'domovoy-client' updated");
+                _logger.LogInformation("[Success] Client 'domovoy-client' updated");
             }
 
             // Регистрация Device Manager как клиента introspection
@@ -66,12 +66,12 @@ public class ClientRegistrationWorker(IServiceProvider sp, ILogger<ClientRegistr
             if (introspectionClient == null)
             {
                 await manager.CreateAsync(introspectionDescriptor, cancellationToken);
-                _logger.LogInformation("✅ Client 'domovoy-device-manager' registered for introspection");
+                _logger.LogInformation("[Success] Client 'domovoy-device-manager' registered for introspection");
             }
             else
             {
                 await manager.UpdateAsync(introspectionClient, introspectionDescriptor, cancellationToken);
-                _logger.LogInformation("✅ Client 'domovoy-device-manager' updated for introspection");
+                _logger.LogInformation("[Success] Client 'domovoy-device-manager' updated for introspection");
             }
 
             // Регистрация Rules Engine как клиента introspection
@@ -91,18 +91,42 @@ public class ClientRegistrationWorker(IServiceProvider sp, ILogger<ClientRegistr
             if (rulesEngineClient == null)
             {
                 await manager.CreateAsync(rulesEngineDescriptor, cancellationToken);
-                _logger.LogInformation("✅ Client 'domovoy-rules-engine' registered for introspection");
+                _logger.LogInformation("[Success] Client 'domovoy-rules-engine' registered for introspection");
             }
             else
             {
                 await manager.UpdateAsync(rulesEngineClient, rulesEngineDescriptor, cancellationToken);
-                _logger.LogInformation("✅ Client 'domovoy-rules-engine' updated for introspection");
+                _logger.LogInformation("[Success] Client 'domovoy-rules-engine' updated for introspection");
+            }
+
+            // Регистрация Notification Service как клиента introspection
+            var notificationDescriptor = new OpenIddictApplicationDescriptor
+            {
+                ClientId = "domovoy-notification",
+                ClientSecret = "notification-secret",
+                DisplayName = "Domovoy Notification Service",
+                ClientType = OpenIddictConstants.ClientTypes.Confidential,
+                Permissions =
+                {
+                    OpenIddictConstants.Permissions.Endpoints.Introspection
+                }
+            };
+
+            var notificationClient = await manager.FindByClientIdAsync("domovoy-notification", cancellationToken);
+            if (notificationClient == null)
+            {
+                await manager.CreateAsync(notificationDescriptor, cancellationToken);
+                _logger.LogInformation("[Success] Client 'domovoy-notification' registered for introspection");
+            }
+            else
+            {
+                await manager.UpdateAsync(notificationClient, notificationDescriptor, cancellationToken);
+                _logger.LogInformation("[Success] Client 'domovoy-notification' updated for introspection");
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "⚠️ ClientRegistrationWorker failed to initialize. OpenIddict features may not be available.");
-            // Don't throw - let the service continue without OpenIddict client registration
+            _logger.LogWarning(ex, "[Warning] ClientRegistrationWorker failed to initialize. OpenIddict features may not be available.");
         }
     }
 

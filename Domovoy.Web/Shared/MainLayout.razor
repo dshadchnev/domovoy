@@ -1,0 +1,58 @@
+@inherits LayoutComponentBase
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<div class="page-wrapper">
+    <NavMenu />
+    <div class="main-content">
+        <header class="top-bar">
+            <h3>Система управления умным домом</h3>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                @if (Auth.IsAuthenticated)
+                {
+                    <span style="color: var(--text-secondary);">👤 @Auth.Username</span>
+                    <button class="btn-primary" style="padding: 0.4rem 1rem; font-size: 0.875rem;" @onclick="Logout">Выйти</button>
+                }
+                else
+                {
+                    <button class="btn-primary" style="padding: 0.4rem 1rem; font-size: 0.875rem;" @onclick="NavigateLogin">Войти</button>
+                }
+            </div>
+        </header>
+        <main class="content-outlet">
+            @Body
+        </main>
+    </div>
+</div>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Auth.InitializeAsync();
+            StateHasChanged();
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Auth.OnAuthStateChanged += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        Auth.OnAuthStateChanged -= StateHasChanged;
+    }
+
+    private async Task Logout()
+    {
+        await Auth.LogoutAsync();
+        Nav.NavigateTo("/login");
+    }
+
+    private void NavigateLogin()
+    {
+        Nav.NavigateTo("/login");
+    }
+}

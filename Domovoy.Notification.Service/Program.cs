@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Domovoy.Notification.Service.Data;
 using Domovoy.Notification.Service.Consumers;
 using Domovoy.Notification.Service.Services;
@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using MassTransit;
+using OpenIddict.Validation.AspNetCore;
 using Telegram.Bot;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -18,39 +19,74 @@ builder.Services.AddDbContextFactory<NotificationDbContext>(opts =>
 builder.Services.AddDbContext<NotificationDbContext>(opts =>
     opts.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
-// 2. JWT Validation
-var jwtSecret = builder.Configuration["Jwt:Secret"]
-    ?? throw new InvalidOperationException("Jwt:Secret not configured");
-
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(opts =>
+// 2. OpenIddict Validation (Introspection)
+builder.Services.AddOpenIddict()
+    .AddValidation(options =>
     {
-        opts.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
-        };
+        options.SetIssuer(builder.Configuration["OpenIddict:Issuer"] ?? "http://domovoy-auth:8080/");
+        options.UseIntrospection()
+            .SetClientId(builder.Configuration["OpenIddict:ClientId"] ?? "domovoy-notification")
+            .SetClientSecret(builder.Configuration["OpenIddict:ClientSecret"] ?? "notification-secret");
+        options.UseSystemNetHttp();
+        options.UseAspNetCore();
     });
+
+// 3. Authentication: SmartBearer Policy Scheme
+var jwtSecret = builder.Configuration["Jwt:Secret"];
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultScheme = "SmartBearer";
+    options.DefaultChallengeScheme = "SmartBearer";
+})
+.AddPolicyScheme("SmartBearer", "JWT or OpenIddict", options =>
+{
+    options.ForwardDefaultSelector = ctx =>
+    {
+        var auth = ctx.Request.Headers["Authorization"].FirstOrDefault() ?? "";
+        if (auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            var token = auth["Bearer ".Length..].Trim();
+            if (token.Split('.').Length == 3)
+                return JwtBearerDefaults.AuthenticationScheme;
+        }
+        return OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
+    };
+})
+.AddJwtBearer(opts =>
+{
+    opts.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "domovoy",
+        ValidAudiences = new[]
+        {
+            builder.Configuration["Jwt:Audience"] ?? "domovoy-users",
+            "DomovoyClients"
+        },
+        IssuerSigningKey = jwtSecret != null
+            ? new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
+            : null
+    };
+});
 
 builder.Services.AddAuthorization();
 
-// 3. Telegram Bot
+// 4. Telegram Bot
 var telegramToken = builder.Configuration["Telegram:BotToken"];
 if (!string.IsNullOrEmpty(telegramToken))
 {
     builder.Services.AddSingleton<ITelegramBotClient>(new TelegramBotClient(telegramToken));
 }
 
-// 4. Notification Senders
+// 5. Notification Senders
 builder.Services.AddSingleton<INotificationSender, TelegramSender>();
 builder.Services.AddSingleton<INotificationSender, EmailSender>();
 
-
-// 5. MassTransit
+// 6. MassTransit
 builder.Services.AddMassTransit(x =>
 {
     x.AddConsumer<RuleTriggeredConsumer>();
@@ -69,11 +105,10 @@ builder.Services.AddMassTransit(x =>
     });
 });
 
-// 6. HealthChecks
+// 7. HealthChecks & Controllers
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<NotificationDbContext>("database");
 
-// 7. Controllers + Swagger
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(opts =>

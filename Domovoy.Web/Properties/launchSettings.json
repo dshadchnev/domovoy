@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "Domovoy.Web": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:49724;http://localhost:49725"
+    }
+  }
+}

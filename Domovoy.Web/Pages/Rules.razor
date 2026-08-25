@@ -1,0 +1,376 @@
+@page "/rules"
+@inject ApiService Api
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+@if (!Auth.IsAuthenticated)
+{
+    <div class="glass-card" style="text-align:center; margin-top:4rem;">
+        <p style="color: var(--text-secondary); margin-bottom:1rem;">Необходима авторизация</p>
+        <button class="btn-primary" @onclick='() => Nav.NavigateTo("/login")'>Войти</button>
+    </div>
+    return;
+}
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+    <h2>Правила автоматизации</h2>
+    <button class="btn-primary" @onclick="OpenCreateModal">+ Создать правило</button>
+</div>
+
+@if (!string.IsNullOrEmpty(globalError))
+{
+    <div style="color:var(--accent-rose);background:rgba(244,63,94,0.1);border:1px solid var(--accent-rose);border-radius:0.5rem;padding:0.75rem;margin-bottom:1rem;">
+        ⚠️ @globalError
+    </div>
+}
+
+<div class="glass-card">
+    @if (isLoading)
+    {
+        <p style="color:var(--text-secondary);">Загрузка правил автоматизации...</p>
+    }
+    else if (rules.Count == 0)
+    {
+        <p style="color:var(--text-secondary);">Нет созданных правил автоматизации. Нажмите «+ Создать правило».</p>
+    }
+    else
+    {
+        <table class="table-custom">
+            <thead>
+                <tr>
+                    <th>Название правила</th>
+                    <th>Датчик (Триггер)</th>
+                    <th>Условие</th>
+                    <th>Исполнитель (Актуатор)</th>
+                    <th>Команда</th>
+                    <th>Статус</th>
+                    <th style="text-align:center;">Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in rules)
+                {
+                    <tr>
+                        <td><strong>@r.Name</strong></td>
+                        <td><code style="color:var(--accent-cyan);">@(r.SensorDeviceId ?? r.DeviceId)</code></td>
+                        <td><code style="color:var(--accent-amber);">@r.Condition</code></td>
+                        <td><code>@(r.ActuatorDeviceId ?? "—")</code></td>
+                        <td><span class="badge badge-online">@r.Command</span></td>
+                        <td>
+                            <button class="btn-primary"
+                                    style="padding:0.25rem 0.75rem;font-size:0.8rem;background:@(r.IsActive ? "var(--accent-emerald)" : "rgba(255,255,255,0.1)");"
+                                    @onclick="() => ToggleRule(r)">
+                                @(r.IsActive ? "АКТИВНО" : "ОТКЛЮЧЕНО")
+                            </button>
+                        </td>
+                        <td style="text-align:center;display:flex;gap:0.5rem;justify-content:center;">
+                            <button class="btn-primary"
+                                    style="padding:0.25rem 0.75rem;font-size:0.8rem;background:var(--accent-cyan);"
+                                    @onclick="() => OpenEditModal(r)">✏️ Изменить</button>
+                            <button class="btn-primary"
+                                    style="padding:0.25rem 0.75rem;font-size:0.8rem;background:var(--accent-rose);"
+                                    @onclick="() => OpenDeleteConfirm(r)">🗑 Удалить</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@* ── Create / Edit Modal ── *@
+@if (showModal)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:200;">
+        <div class="glass-card" style="width:520px;max-height:90vh;overflow-y:auto;">
+            <h3 style="margin-bottom:1.25rem;">@(isEditMode ? "Редактирование правила" : "Создание правила автоматизации")</h3>
+
+            @if (!string.IsNullOrEmpty(modalError))
+            {
+                <div style="color:var(--accent-rose);background:rgba(244,63,94,0.1);border:1px solid var(--accent-rose);border-radius:0.5rem;padding:0.75rem;margin-bottom:1rem;font-size:0.875rem;">
+                    ⚠️ @modalError
+                </div>
+            }
+
+            <div class="form-group">
+                <label>Название правила <span style="color:var(--accent-rose)">*</span></label>
+                <input class="form-input" @bind="formName" placeholder="например: Включить обогрев при t &lt; 18°C" />
+            </div>
+
+            @* ── Sensor section ─── *@
+            <div style="background:rgba(6,182,212,0.05);border:1px solid rgba(6,182,212,0.2);border-radius:0.5rem;padding:1rem;margin-bottom:1rem;">
+                <p style="font-weight:600;color:var(--accent-cyan);margin-bottom:0.75rem;">📡 Датчик (источник телеметрии)</p>
+                <div class="form-group">
+                    <label>Выберите устройство-датчик</label>
+                    @if (userDevices.Count > 0)
+                    {
+                        <select class="form-input" @bind="formSensorDeviceId">
+                            <option value="">— Выберите датчик —</option>
+                            @foreach (var d in userDevices)
+                            {
+                                <option value="@d.NetworkDeviceId">@d.Name (@d.NetworkDeviceId)</option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <input class="form-input" @bind="formSensorDeviceId" placeholder="temp-sensor-01" />
+                    }
+                </div>
+                <div class="form-group">
+                    <label>Выражение условия <span style="color:var(--accent-rose)">*</span></label>
+                    <input class="form-input" @bind="formCondition" placeholder="temperature &lt; 18" />
+                    <small style="color:var(--text-secondary);">Примеры: temperature &lt; 18, humidity &gt; 80, status == 1</small>
+                </div>
+            </div>
+
+            @* ── Actuator section ── *@
+            <div style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.2);border-radius:0.5rem;padding:1rem;margin-bottom:1rem;">
+                <p style="font-weight:600;color:var(--accent-emerald);margin-bottom:0.75rem;">⚡ Исполнитель (устройство-актуатор)</p>
+                <div class="form-group">
+                    <label>Целевое устройство</label>
+                    @if (userDevices.Count > 0)
+                    {
+                        <select class="form-input" @bind="formActuatorDeviceId">
+                            <option value="">— То же устройство / или выберите из списка —</option>
+                            @foreach (var d in userDevices)
+                            {
+                                <option value="@d.NetworkDeviceId">@d.Name (@d.NetworkDeviceId)</option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <input class="form-input" @bind="formActuatorDeviceId" placeholder="heater-01" />
+                    }
+                </div>
+                <div class="form-group">
+                    <label>Действие (команда) <span style="color:var(--accent-rose)">*</span></label>
+                    <select class="form-input" @bind="formCommand">
+                        <option value="turn_on">Включить (turn_on)</option>
+                        <option value="turn_off">Выключить (turn_off)</option>
+                        <option value="set_temperature">Установить температуру (set_temperature)</option>
+                        <option value="set_brightness">Установить яркость (set_brightness)</option>
+                        <option value="send_alert">Отправить оповещение (send_alert)</option>
+                        <option value="open">Открыть (open)</option>
+                        <option value="close">Закрыть (close)</option>
+                        <option value="lock">Заблокировать (lock)</option>
+                        <option value="unlock">Разблокировать (unlock)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display:flex;gap:1rem;margin-top:1rem;">
+                <button class="btn-primary" style="flex:1;" @onclick="SaveRule" disabled="@isSaving">
+                    @(isSaving ? "Сохранение..." : (isEditMode ? "Сохранить изменения" : "Создать правило"))
+                </button>
+                <button class="btn-primary" style="flex:1;background:var(--bg-surface-hover);" @onclick="CloseModal">Отмена</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Delete Confirmation ── *@
+@if (showDeleteConfirm && ruleToDelete != null)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:200;">
+        <div class="glass-card" style="width:400px;text-align:center;">
+            <h3 style="margin-bottom:0.5rem;color:var(--accent-rose);">⚠️ Удалить правило?</h3>
+            <p style="color:var(--text-secondary);margin-bottom:1.5rem;">
+                Правило <strong>@ruleToDelete.Name</strong> будет удалено навсегда.
+            </p>
+            @if (!string.IsNullOrEmpty(modalError))
+            {
+                <div style="color:var(--accent-rose);margin-bottom:1rem;font-size:0.875rem;">⚠️ @modalError</div>
+            }
+            <div style="display:flex;gap:1rem;">
+                <button class="btn-primary" style="flex:1;background:var(--accent-rose);" @onclick="ConfirmDelete" disabled="@isSaving">
+                    @(isSaving ? "Удаление..." : "Да, удалить")
+                </button>
+                <button class="btn-primary" style="flex:1;background:var(--bg-surface-hover);" @onclick="() => { showDeleteConfirm = false; modalError = null; }">Отмена</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool isLoading;
+    private bool isSaving;
+    private bool showModal;
+    private bool showDeleteConfirm;
+    private bool isEditMode;
+
+    private string? globalError;
+    private string? modalError;
+
+    private Guid editingRuleId;
+    private string formName = "";
+    private string formSensorDeviceId = "";
+    private string formActuatorDeviceId = "";
+    private string formCondition = "";
+    private string formCommand = "turn_on";
+
+    private class RuleItem
+    {
+        public Guid   Id               { get; set; }
+        public string Name             { get; set; } = "";
+        public string DeviceId         { get; set; } = "";
+        public string SensorDeviceId   { get; set; } = "";
+        public string ActuatorDeviceId { get; set; } = "";
+        public string Condition        { get; set; } = "";
+        public string Command          { get; set; } = "";
+        public bool   IsActive         { get; set; }
+    }
+
+    private class DeviceOption
+    {
+        public string NetworkDeviceId { get; set; } = "";
+        public string Name            { get; set; } = "";
+    }
+
+    private RuleItem? ruleToDelete;
+    private List<RuleItem>   rules       = new();
+    private List<DeviceOption> userDevices = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Task.WhenAll(LoadRules(), LoadUserDevices());
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadUserDevices()
+    {
+        var res = await Api.GetDevicesMgmtAsync();
+        userDevices.Clear();
+        if (res.HasValue && res.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            foreach (var item in res.Value.EnumerateArray())
+            {
+                var id   = item.TryGetProperty("networkDeviceId", out var p1) ? p1.GetString() ?? "" : "";
+                var name = item.TryGetProperty("name",            out var p2) ? p2.GetString() ?? id : id;
+                if (!string.IsNullOrEmpty(id))
+                    userDevices.Add(new DeviceOption { NetworkDeviceId = id, Name = name });
+            }
+        }
+    }
+
+    private async Task LoadRules()
+    {
+        isLoading = true;
+        globalError = null;
+        var res = await Api.GetRulesAsync();
+        rules.Clear();
+        if (res.HasValue && res.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            foreach (var item in res.Value.EnumerateArray())
+            {
+                var id = item.TryGetProperty("id", out var pId) && pId.TryGetGuid(out var g) ? g : Guid.NewGuid();
+                rules.Add(new RuleItem
+                {
+                    Id               = id,
+                    Name             = item.TryGetProperty("name",             out var p1) ? p1.GetString() ?? "" : "",
+                    DeviceId         = item.TryGetProperty("deviceId",         out var p2) ? p2.GetString() ?? "" : "",
+                    SensorDeviceId   = item.TryGetProperty("sensorDeviceId",   out var p3) ? p3.GetString() ?? "" : "",
+                    ActuatorDeviceId = item.TryGetProperty("actuatorDeviceId", out var p4) ? p4.GetString() ?? "" : "",
+                    Condition        = item.TryGetProperty("condition",         out var p5) ? p5.GetString() ?? "" : "",
+                    Command          = item.TryGetProperty("command",           out var p6) ? p6.GetString() ?? "" : "",
+                    IsActive         = item.TryGetProperty("isActive",          out var p7) && p7.GetBoolean()
+                });
+            }
+        }
+        isLoading = false;
+    }
+
+    private void OpenCreateModal()
+    {
+        isEditMode = false;
+        formName = ""; formSensorDeviceId = ""; formActuatorDeviceId = "";
+        formCondition = ""; formCommand = "turn_on";
+        modalError = null;
+        showModal = true;
+    }
+
+    private void OpenEditModal(RuleItem r)
+    {
+        isEditMode = true;
+        editingRuleId       = r.Id;
+        formName            = r.Name;
+        formSensorDeviceId  = !string.IsNullOrEmpty(r.SensorDeviceId) ? r.SensorDeviceId : r.DeviceId;
+        formActuatorDeviceId = r.ActuatorDeviceId;
+        formCondition       = r.Condition;
+        formCommand         = r.Command;
+        modalError          = null;
+        showModal           = true;
+    }
+
+    private void CloseModal() { showModal = false; modalError = null; }
+
+    private async Task SaveRule()
+    {
+        if (string.IsNullOrWhiteSpace(formName) || string.IsNullOrWhiteSpace(formCondition))
+        {
+            modalError = "Название правила и условие обязательны.";
+            return;
+        }
+
+        isSaving = true;
+        modalError = null;
+
+        var effectiveActuator = string.IsNullOrWhiteSpace(formActuatorDeviceId)
+            ? formSensorDeviceId
+            : formActuatorDeviceId;
+
+        var dto = new
+        {
+            name             = formName,
+            deviceId         = effectiveActuator,
+            sensorDeviceId   = formSensorDeviceId,
+            actuatorDeviceId = effectiveActuator,
+            condition        = formCondition,
+            command          = formCommand
+        };
+
+        if (isEditMode)
+        {
+            var (ok, err) = await Api.UpdateRuleAsync(editingRuleId, dto);
+            isSaving = false;
+            if (ok) { CloseModal(); await LoadRules(); }
+            else    { modalError = err ?? "Ошибка обновления правила."; }
+        }
+        else
+        {
+            var (ok, err) = await Api.CreateRuleAsync(dto);
+            isSaving = false;
+            if (ok) { CloseModal(); await LoadRules(); }
+            else    { modalError = err ?? "Ошибка создания правила."; }
+        }
+    }
+
+    private async Task ToggleRule(RuleItem r)
+    {
+        r.IsActive = !r.IsActive;
+        if (r.Id != Guid.Empty)
+            await Api.ToggleRuleAsync(r.Id);
+    }
+
+    private void OpenDeleteConfirm(RuleItem r)
+    {
+        ruleToDelete = r;
+        modalError   = null;
+        showDeleteConfirm = true;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (ruleToDelete == null) return;
+        isSaving = true;
+        modalError = null;
+        var (ok, err) = await Api.DeleteRuleAsync(ruleToDelete.Id);
+        isSaving = false;
+        if (ok) { showDeleteConfirm = false; ruleToDelete = null; await LoadRules(); }
+        else    { modalError = err ?? "Ошибка удаления правила."; }
+    }
+}

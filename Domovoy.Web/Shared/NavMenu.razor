@@ -1,0 +1,45 @@
+@inject AuthService Auth
+
+<div class="sidebar">
+    <div class="sidebar-header" style="display:flex; align-items:center; gap:0.75rem;">
+        <img src="logo.png" alt="Домовой" style="width:32px; height:32px; border-radius:6px; object-fit:contain;" />
+        <span class="logo-text">«Домовой»</span>
+    </div>
+    <ul class="nav-list">
+        <li>
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                <span>📊</span> Главная панель
+            </NavLink>
+        </li>
+        <li>
+            <NavLink class="nav-link" href="devices">
+                <span>🔌</span> Устройства
+            </NavLink>
+        </li>
+        <li>
+            <NavLink class="nav-link" href="rules">
+                <span>⚡</span> Правила и сценарии
+            </NavLink>
+        </li>
+        <li>
+            <NavLink class="nav-link" href="commands">
+                <span>📡</span> История команд
+            </NavLink>
+        </li>
+        <li>
+            <NavLink class="nav-link" href="telemetry">
+                <span>📈</span> График телеметрии
+            </NavLink>
+        </li>
+        <li>
+            <NavLink class="nav-link" href="emulator">
+                <span>🎮</span> Эмулятор телеметрии
+            </NavLink>
+        </li>
+        <li>
+            <NavLink class="nav-link" href="notifications">
+                <span>🔔</span> Уведомления
+            </NavLink>
+        </li>
+    </ul>
+</div>

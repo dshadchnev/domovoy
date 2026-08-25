@@ -105,11 +105,11 @@ public class DevicesController : ControllerBase
 
         if (tokenDeviceId != id)
         {
-            _logger.LogWarning("⚠️ Device ID mismatch. URL: {UrlId}, Token: {TokenId}", id, tokenDeviceId);
+            _logger.LogWarning("Device ID mismatch. URL: {UrlId}, Token: {TokenId}", id, tokenDeviceId);
             return Forbid();
         }
 
-        _logger.LogInformation("📡 Telemetry received from {DeviceId}", id);
+        _logger.LogInformation("Telemetry received from {DeviceId}", id);
 
         // Публикация в шину (тот же контракт для всех устройств)
         await _bus.Publish(new TelemetryReceivedEvent(id, telemetry.GetRawText(), DateTime.UtcNow));

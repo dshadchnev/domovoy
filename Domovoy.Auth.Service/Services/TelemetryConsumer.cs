@@ -23,7 +23,7 @@ public class TelemetryConsumer(IDatabase redis, ILogger<TelemetryConsumer> logge
         var evt = context.Message;
 
         logger.LogInformation(
-            "📡 [TelemetryConsumer] Device={DeviceId} | Ts={Timestamp:O} | Data={Data}",
+            "[TelemetryConsumer] Device={DeviceId} | Ts={Timestamp:O} | Data={Data}",
             evt.DeviceId, evt.Timestamp, evt.Data);
 
         try
@@ -47,13 +47,13 @@ public class TelemetryConsumer(IDatabase redis, ILogger<TelemetryConsumer> logge
             var count = await redis.StringIncrementAsync(counterKey);
 
             logger.LogDebug(
-                "💾 [TelemetryConsumer] Saved to Redis: key={Key} | total_count={Count}",
+                "[TelemetryConsumer] Saved to Redis: key={Key} | total_count={Count}",
                 latestKey, count);
         }
         catch (Exception ex)
         {
             logger.LogError(ex,
-                "❌ [TelemetryConsumer] Failed to write to Redis for device={DeviceId}",
+                "[TelemetryConsumer] Failed to write to Redis for device={DeviceId}",
                 evt.DeviceId);
             // Не пробрасываем — MassTransit сделает retry по политике
         }

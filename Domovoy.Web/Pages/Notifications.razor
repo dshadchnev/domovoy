@@ -1,0 +1,220 @@
+﻿@page "/notifications"
+@inject ApiService Api
+
+<div class="page-header">
+    <div class="page-title">
+        <h1>Уведомления и оповещения</h1>
+        <p class="page-subtitle">Настройка каналов информирования (Telegram, Email) о событиях и срабатывании правил</p>
+    </div>
+</div>
+
+@if (showSuccessToast)
+{
+    <div style="background: rgba(16, 185, 129, 0.2); border: 1px solid var(--accent-green); color: #34d399; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+        <span style="font-size: 1.25rem;">✅</span>
+        <div>@(toastMessage ?? "Настройки успешно сохранены!")</div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div style="background: rgba(239, 68, 68, 0.2); border: 1px solid var(--accent-red); color: #f87171; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem; white-space: pre-wrap;">
+        <span style="font-size: 1.25rem;">⚠️</span>
+        <div>@errorMessage</div>
+    </div>
+}
+
+@if (isLoading)
+{
+    <div style="display:flex; justify-content:center; padding: 3rem;">
+        <div class="spinner"></div>
+    </div>
+}
+else
+{
+    <div style="display:flex; flex-direction:column; gap:2rem; max-width:800px;">
+        <!-- Telegram Card -->
+        <div class="card" style="padding:1.5rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                <div style="display:flex; align-items:center; gap:0.75rem;">
+                    <span style="font-size:1.5rem;">✈️</span>
+                    <div>
+                        <h3 style="font-size:1.1rem; font-weight:600;">Telegram уведомления</h3>
+                        <p style="font-size:0.85rem; color:var(--text-secondary);">Отправка сообщений через персонального Telegram-бота</p>
+                    </div>
+                </div>
+                <label class="switch" style="position:relative; display:inline-block; width:48px; height:24px;">
+                    <input type="checkbox" @bind="settings.TelegramEnabled" style="opacity:0; width:0; height:0;">
+                    <span class="slider round" style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:@(settings.TelegramEnabled ? "var(--accent-blue)" : "rgba(255,255,255,0.1)"); transition:.3s; border-radius:24px;"></span>
+                </label>
+            </div>
+
+            @if (settings.TelegramEnabled)
+            {
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-top:1rem; border-top:1px solid rgba(255,255,255,0.05); padding-top:1rem;">
+                    <div class="form-group">
+                        <label>Telegram Chat ID *</label>
+                        <input class="form-input" placeholder="Например: 123456789" @bind="settings.TelegramChatId" />
+                        <small style="color:var(--text-secondary); font-size:0.75rem;">Узнать свой ID можно у бота @@userinfobot</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Bot Token (Опционально)</label>
+                        <input class="form-input" type="password" placeholder="Токен от @@BotFather" @bind="settings.TelegramBotToken" />
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Email Card -->
+        <div class="card" style="padding:1.5rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                <div style="display:flex; align-items:center; gap:0.75rem;">
+                    <span style="font-size:1.5rem;">✉️</span>
+                    <div>
+                        <h3 style="font-size:1.1rem; font-weight:600;">Email & SMTP уведомления</h3>
+                        <p style="font-size:0.85rem; color:var(--text-secondary);">Доставка уведомлений на вашу почту через SMTP сервер</p>
+                    </div>
+                </div>
+                <label class="switch" style="position:relative; display:inline-block; width:48px; height:24px;">
+                    <input type="checkbox" @bind="settings.EmailEnabled" style="opacity:0; width:0; height:0;">
+                    <span class="slider round" style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:@(settings.EmailEnabled ? "var(--accent-blue)" : "rgba(255,255,255,0.1)"); transition:.3s; border-radius:24px;"></span>
+                </label>
+            </div>
+
+            @if (settings.EmailEnabled)
+            {
+                <div style="margin-bottom:1rem; padding:0.75rem; background:rgba(6,182,212,0.1); border-left:3px solid var(--accent-cyan); border-radius:4px; font-size:0.85rem; color:#bae6fd;">
+                    💡 <b>Важно:</b> Для Mail.ru / Yandex / Gmail используйте <b>«Пароль для внешних приложений»</b> (генерируется в безопасности аккаунта почты), а не обычный пароль от входа. Порт: <b>465 (SSL)</b> или <b>587 (TLS)</b>. Email отправителя должен совпадать с логином.
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; border-top:1px solid rgba(255,255,255,0.05); padding-top:1rem;">
+                    <div class="form-group" style="grid-column: span 2;">
+                        <label>Email получателя *</label>
+                        <input class="form-input" placeholder="user@example.com" @bind="settings.RecipientEmail" />
+                        <small style="color:var(--text-secondary); font-size:0.75rem;">Адрес, на который будут отправляться письма о срабатывании правил</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>SMTP Сервер *</label>
+                        <input class="form-input" placeholder="smtp.mail.ru" @bind="settings.SmtpHost" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>SMTP Порт *</label>
+                        <input class="form-input" type="number" placeholder="465" @bind="settings.SmtpPort" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>SMTP Логин (Email) *</label>
+                        <input class="form-input" placeholder="my_email@mail.ru" @bind="settings.SmtpUser" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>SMTP Пароль приложения *</label>
+                        <input class="form-input" type="password" placeholder="••••••••••••••••" @bind="settings.SmtpPass" />
+                    </div>
+
+                    <div class="form-group" style="grid-column: span 2;">
+                        <label>Email отправителя (From Email)</label>
+                        <input class="form-input" placeholder="Оставьте пустым или укажите ваш логин" @bind="settings.SmtpFromEmail" />
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div style="display:flex; gap:1rem;">
+            <button class="btn-primary" style="padding:0.75rem 2rem; font-size:1rem;" @onclick="SaveSettings" disabled="@isSaving">
+                @(isSaving ? "Сохранение..." : "💾 Сохранить настройки")
+            </button>
+            <button class="btn-secondary" style="padding:0.75rem 1.5rem; font-size:1rem; background:rgba(6,182,212,0.15); color:var(--accent-cyan); border:1px solid var(--accent-cyan);" @onclick="TestNotification" disabled="@isTesting">
+                @(isTesting ? "Отправка..." : "🧪 Проверить отправку (Тест)")
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private NotificationSettingsDto settings = new NotificationSettingsDto();
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private bool isTesting = false;
+    private bool showSuccessToast = false;
+    private string? toastMessage;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSettings();
+    }
+
+    private async Task LoadSettings()
+    {
+        isLoading = true;
+        errorMessage = null;
+        var loaded = await Api.GetNotificationSettingsDtoAsync();
+        if (loaded != null)
+        {
+            settings = loaded;
+            if (settings.SmtpPort == null || settings.SmtpPort == 0)
+            {
+                settings.SmtpPort = 465;
+            }
+        }
+        isLoading = false;
+    }
+
+    private async Task SaveSettings()
+    {
+        isSaving = true;
+        errorMessage = null;
+
+        var (success, err) = await Api.SaveNotificationSettingsAsync(settings);
+        isSaving = false;
+
+        if (success)
+        {
+            toastMessage = "Настройки успешно сохранены!";
+            showSuccessToast = true;
+            StateHasChanged();
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(3500);
+                showSuccessToast = false;
+                await InvokeAsync(StateHasChanged);
+            });
+        }
+        else
+        {
+            errorMessage = err ?? "Не удалось сохранить настройки";
+        }
+    }
+
+    private async Task TestNotification()
+    {
+        isTesting = true;
+        errorMessage = null;
+
+        // Auto-save settings first
+        await Api.SaveNotificationSettingsAsync(settings);
+
+        var (success, resInfo) = await Api.TestNotificationAsync();
+        isTesting = false;
+
+        if (success)
+        {
+            toastMessage = !string.IsNullOrWhiteSpace(resInfo) && !resInfo.Trim().StartsWith("{") ? resInfo : "Тестовое уведомление успешно отправлено!";
+            showSuccessToast = true;
+            StateHasChanged();
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(6000);
+                showSuccessToast = false;
+                await InvokeAsync(StateHasChanged);
+            });
+        }
+        else
+        {
+            errorMessage = resInfo ?? "Не удалось отправить тестовое уведомление";
+        }
+    }
+}

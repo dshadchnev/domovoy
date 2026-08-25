@@ -32,7 +32,7 @@ public class OpenIddictServerEventHandlers
         if (!context.Request.IsPasswordGrantType())
             return;
 
-        _logger.LogInformation("🔑 Validating password grant request");
+        _logger.LogInformation("[Auth] Validating password grant request");
 
         // Find user by email or username
         var user = await _userManager.FindByNameAsync(context.Request.Username ?? string.Empty)
@@ -40,25 +40,25 @@ public class OpenIddictServerEventHandlers
 
         if (user is null)
         {
-            _logger.LogWarning("❌ User not found: {Username}", context.Request.Username);
+            _logger.LogWarning("[Error] User not found: {Username}", context.Request.Username);
             return;
         }
 
         if (!user.IsActive)
         {
-            _logger.LogWarning("❌ User is inactive: {UserId}", user.Id);
+            _logger.LogWarning("[Error] User is inactive: {UserId}", user.Id);
             return;
         }
 
         // Validate password
         if (!await _userManager.CheckPasswordAsync(user, context.Request.Password ?? string.Empty))
         {
-            _logger.LogWarning("❌ Invalid password for user: {UserId}", user.Id);
+            _logger.LogWarning("[Error] Invalid password for user: {UserId}", user.Id);
             return;
         }
 
         context.Principal = await CreatePrincipalAsync(user);
-        _logger.LogInformation("✅ Token validation succeeded for user: {UserId}", user.Id);
+        _logger.LogInformation("[Success] Token validation succeeded for user: {UserId}", user.Id);
     }
 
     private async Task<ClaimsPrincipal> CreatePrincipalAsync(AuthUser user)

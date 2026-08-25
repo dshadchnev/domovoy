@@ -18,10 +18,13 @@
     <PackageReference Include="OpenIddict.Validation.AspNetCore" Version="5.5.0" />
     <PackageReference Include="OpenIddict.Validation.SystemNetHttp" Version="5.5.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+    <PackageReference Include="Riok.Mapperly" Version="3.3.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Domovoy.Shared\Domovoy.Shared.csproj" />
+    <ProjectReference Include="..\Domovoy.Domain\Domovoy.Domain.csproj" />
   </ItemGroup>
+
 
 </Project>

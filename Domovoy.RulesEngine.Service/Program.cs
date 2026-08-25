@@ -12,16 +12,15 @@ using Domovoy.RulesEngine.Service.Consumers;
 var builder = WebApplication.CreateBuilder(args);
 
 // 1. PostgreSQL
-// AddDbContextFactory (Singleton) + AddDbContext (Scoped) — стандартная комбинация:
-// Consumer (MassTransit Singleton) получает IDbContextFactory, Controller получает RulesEngineDbContext.
+// AddDbContextFactory (Singleton) + AddDbContext (Scoped) combination:
+// Consumer (MassTransit Singleton) receives IDbContextFactory, Controller receives RulesEngineDbContext.
 var connStr = builder.Configuration.GetConnectionString("Default");
 builder.Services.AddDbContextFactory<RulesEngineDbContext>(
     opts => opts.UseNpgsql(connStr));
 builder.Services.AddDbContext<RulesEngineDbContext>(
     opts => opts.UseNpgsql(connStr));
 
-
-// 2. OpenIddict Validation — introspection через Auth Service (для JWE/OpenIddict токенов)
+// 2. OpenIddict Validation - introspection via Auth Service (for JWE/OpenIddict tokens)
 builder.Services.AddOpenIddict()
     .AddValidation(options =>
     {
@@ -33,7 +32,7 @@ builder.Services.AddOpenIddict()
         options.UseAspNetCore();
     });
 
-// 3. Authentication: Policy Scheme — принимает и OpenIddict JWE, и plain HS256 JWT
+// 3. Authentication: Policy Scheme - accepts both OpenIddict JWE and plain HS256 JWT
 var jwtSecret = builder.Configuration["Jwt:Secret"];
 
 builder.Services.AddAuthentication(options =>
@@ -46,7 +45,7 @@ builder.Services.AddAuthentication(options =>
     options.ForwardDefaultSelector = ctx =>
     {
         var auth = ctx.Request.Headers["Authorization"].FirstOrDefault() ?? "";
-        // Plain JWT = 3 части (header.payload.sig)
+        // Plain JWT = 3 parts (header.payload.sig)
         if (auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
             var token = auth["Bearer ".Length..].Trim();
@@ -81,7 +80,6 @@ builder.Services.AddAuthorization();
 // 3. MassTransit v8+ 
 builder.Services.AddMassTransit(x =>
 {
-
     x.AddConsumer<TelemetryRuleEvaluator>();
 
     x.UsingRabbitMq((context, cfg) =>
@@ -107,7 +105,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(opts =>
 {
-    opts.SwaggerDoc("v1", new() { Title = "Domovoy RulesEngine Service", Version = "v1" });
+    opts.SwaggerDoc("v1", new OpenApiInfo { Title = "Domovoy RulesEngine Service", Version = "v1" });
     opts.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = "JWT Authorization. Enter: Bearer {token}",

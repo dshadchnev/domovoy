@@ -1,4 +1,4 @@
-﻿using Telegram.Bot;
+using Telegram.Bot;
 using Microsoft.Extensions.Logging;
 
 namespace Domovoy.Notification.Service.Services;
@@ -25,6 +25,6 @@ public class TelegramSender : INotificationSender
             text: fullMessage,
             parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown);
 
-        _logger.LogInformation("✅ Telegram sent to {ChatId}", chatId);
+        _logger.LogInformation("[Success] Telegram sent to {ChatId}", chatId);
     }
 }
