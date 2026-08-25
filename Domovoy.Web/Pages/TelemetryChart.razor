@@ -1,8 +1,9 @@
-@page "/telemetry"
+﻿@page "/telemetry"
 @inject ApiService Api
 @inject AuthService Auth
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@implements IDisposable
 
 @if (!Auth.IsAuthenticated)
 {
@@ -110,6 +111,7 @@
 
     private List<DeviceOption> availableDevices = new();
     private List<TelemetryPoint> telemetryPoints = new();
+    private System.Threading.Timer? _refreshTimer;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -125,7 +127,22 @@
         if (!string.IsNullOrEmpty(selectedDeviceId))
             await LoadTelemetryHistory();
 
+        // Auto-refresh every 10 seconds
+        _refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadTelemetryHistory();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+
         StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
     }
 
     private async Task LoadUserDevices()
@@ -189,8 +206,15 @@
             {
                 foreach (var pt in pointsEl.EnumerateArray())
                 {
-                    var ts = pt.TryGetProperty("timestamp", out var pTs) || pt.TryGetProperty("Timestamp", out pTs)
-                              ? pTs.ToString() : "";
+                    string ts = "";
+                    if (pt.TryGetProperty("timestamp", out var pTs) || pt.TryGetProperty("Timestamp", out pTs))
+                    {
+                        // Format timestamp to readable HH:mm:ss
+                        if (pTs.TryGetDateTime(out var dtVal))
+                            ts = dtVal.ToLocalTime().ToString("HH:mm:ss");
+                        else
+                            ts = pTs.ToString();
+                    }
 
                     string metricName = "value";
                     string valueStr   = "";
@@ -205,6 +229,9 @@
                             valueStr   = prop.Value.ToString();
                             if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Number)
                                 numVal = prop.Value.GetDouble();
+                            else if (double.TryParse(valueStr, System.Globalization.NumberStyles.Any,
+                                         System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+                                numVal = parsed;
                             break;
                         }
                     }
@@ -221,7 +248,8 @@
             }
         }
 
-        if (telemetryPoints.Count == 0)
+        bool usingDemo = telemetryPoints.Count == 0;
+        if (usingDemo)
         {
             var baseTime = DateTime.UtcNow.AddMinutes(-28);
             double[] demo = { 21.2, 21.5, 21.8, 22.0, 22.3, 22.1, 22.5, 22.7, 22.4, 22.8 };
@@ -229,9 +257,9 @@
             {
                 telemetryPoints.Add(new TelemetryPoint
                 {
-                    Timestamp    = baseTime.AddMinutes(i * 3).ToString("HH:mm:ss"),
-                    MetricName   = "температура (демо)",
-                    Value        = $"{demo[i]} °C",
+                    Timestamp    = baseTime.AddMinutes(i * 3).ToLocalTime().ToString("HH:mm:ss"),
+                    MetricName   = "temperature (demo)",
+                    Value        = $"{demo[i]} C",
                     RawJson      = $"{{\"temperature\": {demo[i]}, \"humidity\": 45}}",
                     NumericValue = demo[i]
                 });
@@ -243,6 +271,7 @@
         var labels = System.Text.Json.JsonSerializer.Serialize(telemetryPoints.Select(p => p.Timestamp).ToList());
         var values = System.Text.Json.JsonSerializer.Serialize(telemetryPoints.Select(p => p.NumericValue).ToList());
         var deviceLabel = System.Text.Json.JsonSerializer.Serialize(selectedDeviceId);
+        var demoLabel = usingDemo ? " (demo — no real data yet)" : "";
 
         var script = $@"(function() {{
             var ctx = document.getElementById('telemetryChartCanvas');
@@ -253,7 +282,7 @@
                 data: {{
                     labels: {labels},
                     datasets: [{{
-                        label: 'Телеметрия — ' + {deviceLabel},
+                        label: 'Telemetry — ' + {deviceLabel} + '{demoLabel}',
                         data: {values},
                         borderColor: '#06b6d4',
                         backgroundColor: 'rgba(6,182,212,0.12)',

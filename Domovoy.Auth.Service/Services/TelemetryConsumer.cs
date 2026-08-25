@@ -28,20 +28,36 @@ public class TelemetryConsumer(IDatabase redis, ILogger<TelemetryConsumer> logge
 
         try
         {
+            object dataObj;
+            try
+            {
+                dataObj = JsonSerializer.Deserialize<JsonElement>(evt.Data);
+            }
+            catch
+            {
+                dataObj = evt.Data;
+            }
+
             // Сериализуем для Redis
             var payload = JsonSerializer.Serialize(new
             {
-                deviceId  = evt.DeviceId,
-                data      = evt.Data,
-                timestamp = evt.Timestamp,
+                deviceId   = evt.DeviceId,
+                data       = dataObj,
+                timestamp  = evt.Timestamp,
                 receivedAt = DateTime.UtcNow
             });
 
             var latestKey  = $"device:telemetry:{evt.DeviceId}";
+            var historyKey = $"device:telemetry:history:{evt.DeviceId}";
             var counterKey = $"device:telemetry:{evt.DeviceId}:count";
 
             // Пишем последнюю телеметрию (TTL 24 часа)
             await redis.StringSetAsync(latestKey, payload, TimeSpan.FromHours(24));
+
+            // Сохраняем в список истории (до 500 последних точек, TTL 7 дней)
+            await redis.ListRightPushAsync(historyKey, payload);
+            await redis.ListTrimAsync(historyKey, -500, -1);
+            await redis.KeyExpireAsync(historyKey, TimeSpan.FromDays(7));
 
             // Инкрементируем счётчик
             var count = await redis.StringIncrementAsync(counterKey);

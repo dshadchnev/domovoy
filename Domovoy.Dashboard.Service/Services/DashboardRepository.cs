@@ -1,4 +1,4 @@
-using Domovoy.Dashboard.Service.Data;
+п»їusing Domovoy.Dashboard.Service.Data;
 using Microsoft.EntityFrameworkCore;
 using StackExchange.Redis;
 using System.Text.Json;
@@ -65,7 +65,7 @@ public class DashboardRepository : IDashboardRepository
 
         foreach (var device in devices)
         {
-            // Получаем последнюю телеметрию из Redis
+            // Р§РёС‚Р°РµРј РїРѕСЃР»РµРґРЅСЋСЋ С‚РµР»РµРјРµС‚СЂРёСЋ РёР· Redis
             var lastTelemetry = await db.StringGetAsync($"device:telemetry:{device.NetworkDeviceId}");
             DateTime? lastSeen = null;
             string? lastStatus = null;
@@ -74,11 +74,14 @@ public class DashboardRepository : IDashboardRepository
             {
                 try
                 {
-                    var data = JsonSerializer.Deserialize<Dictionary<string, object>>(lastTelemetry!);
-                    if (data != null && data.ContainsKey("timestamp"))
+                    using var doc = JsonDocument.Parse(lastTelemetry.ToString());
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("timestamp", out var tsProp) && tsProp.TryGetDateTime(out var ts))
+                        lastSeen = ts;
+                    if (root.TryGetProperty("data", out var dataProp))
                     {
-                        lastSeen = DateTime.Parse(data["timestamp"]!.ToString()!);
-                        lastStatus = data.ContainsKey("status") ? data["status"]!.ToString() : null;
+                        if (dataProp.ValueKind == JsonValueKind.Object && dataProp.TryGetProperty("status", out var stProp))
+                            lastStatus = stProp.GetString();
                     }
                 }
                 catch (Exception ex)
@@ -105,9 +108,114 @@ public class DashboardRepository : IDashboardRepository
 
     public async Task<TelemetryHistoryDto> GetTelemetryHistoryAsync(string deviceId, DateTime from, DateTime to)
     {
-        // TODO: В production использовать TimescaleDB или отдельную таблицу телеметрии
-        // Сейчас возвращаем пустой список, так как телеметрия хранится только в Redis
-        return new TelemetryHistoryDto(deviceId, from, to, new List<TelemetryPoint>());
+        var db = _redis.GetDatabase();
+        var historyKey = $"device:telemetry:history:{deviceId}";
+        var entries = await db.ListRangeAsync(historyKey, -200, -1);
+        var points = new List<TelemetryPoint>();
+
+        if (entries != null && entries.Length > 0)
+        {
+            foreach (var entry in entries)
+            {
+                if (!entry.HasValue) continue;
+                try
+                {
+                    using var doc = JsonDocument.Parse(entry.ToString());
+                    var root = doc.RootElement;
+
+                    DateTime ts = DateTime.UtcNow;
+                    if (root.TryGetProperty("timestamp", out var tsProp) && tsProp.TryGetDateTime(out var parsedTs))
+                        ts = parsedTs;
+                    else if (root.TryGetProperty("receivedAt", out var recProp) && recProp.TryGetDateTime(out var parsedRec))
+                        ts = parsedRec;
+
+                    var dataDict = new Dictionary<string, object>();
+                    if (root.TryGetProperty("data", out var dataProp))
+                    {
+                        if (dataProp.ValueKind == JsonValueKind.Object)
+                        {
+                            foreach (var prop in dataProp.EnumerateObject())
+                            {
+                                if (prop.Value.ValueKind == JsonValueKind.Number && prop.Value.TryGetDouble(out var num))
+                                    dataDict[prop.Name] = num;
+                                else if (prop.Value.ValueKind == JsonValueKind.String)
+                                {
+                                    var strVal = prop.Value.GetString() ?? "";
+                                    if (double.TryParse(strVal, System.Globalization.NumberStyles.Any,
+                                            System.Globalization.CultureInfo.InvariantCulture, out var parsedNum))
+                                        dataDict[prop.Name] = parsedNum;
+                                    else
+                                        dataDict[prop.Name] = strVal;
+                                }
+                                else if (prop.Value.ValueKind == JsonValueKind.True ||
+                                         prop.Value.ValueKind == JsonValueKind.False)
+                                    dataDict[prop.Name] = prop.Value.GetBoolean();
+                                else
+                                    dataDict[prop.Name] = prop.Value.ToString();
+                            }
+                        }
+                        else if (dataProp.ValueKind == JsonValueKind.String)
+                        {
+                            // data was stored as escaped JSON string вЂ” parse inner JSON
+                            try
+                            {
+                                var innerJson = dataProp.GetString()!;
+                                using var innerDoc = JsonDocument.Parse(innerJson);
+                                foreach (var prop in innerDoc.RootElement.EnumerateObject())
+                                {
+                                    if (prop.Value.ValueKind == JsonValueKind.Number && prop.Value.TryGetDouble(out var num))
+                                        dataDict[prop.Name] = num;
+                                    else
+                                        dataDict[prop.Name] = prop.Value.ToString();
+                                }
+                            }
+                            catch
+                            {
+                                dataDict["value"] = dataProp.GetString() ?? "";
+                            }
+                        }
+                    }
+
+                    points.Add(new TelemetryPoint(ts, dataDict));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to parse telemetry history point for {DeviceId}", deviceId);
+                }
+            }
+        }
+        else
+        {
+            // Fallback: РїРѕСЃР»РµРґРЅРµРµ РѕРґРёРЅРѕС‡РЅРѕРµ Р·РЅР°С‡РµРЅРёРµ РёР· Redis
+            var latest = await db.StringGetAsync($"device:telemetry:{deviceId}");
+            if (latest.HasValue)
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(latest.ToString());
+                    var root = doc.RootElement;
+                    DateTime ts = DateTime.UtcNow;
+                    if (root.TryGetProperty("timestamp", out var tsProp) && tsProp.TryGetDateTime(out var parsedTs))
+                        ts = parsedTs;
+
+                    var dataDict = new Dictionary<string, object>();
+                    if (root.TryGetProperty("data", out var dataProp) && dataProp.ValueKind == JsonValueKind.Object)
+                    {
+                        foreach (var prop in dataProp.EnumerateObject())
+                        {
+                            if (prop.Value.ValueKind == JsonValueKind.Number && prop.Value.TryGetDouble(out var num))
+                                dataDict[prop.Name] = num;
+                            else
+                                dataDict[prop.Name] = prop.Value.ToString();
+                        }
+                    }
+                    points.Add(new TelemetryPoint(ts, dataDict));
+                }
+                catch { }
+            }
+        }
+
+        return new TelemetryHistoryDto(deviceId, from, to, points);
     }
 
     public async Task<CommandStatsDto> GetCommandStatsAsync(Guid userId, DateTime? from = null, DateTime? to = null)
