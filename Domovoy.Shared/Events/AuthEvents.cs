@@ -5,7 +5,7 @@ public record DeviceLinkedEvent(string NetworkDeviceId, Guid OwnerId, Guid? Room
 public record UserRolesChangedEvent(Guid UserId, string NewRole);
 public record DeviceSecretRotatedEvent(string NetworkDeviceId);
 
-// 📊 Audit Events
+// Audit Events
 public record AuthAuditEvent(
     Guid Id,
     Guid? UserId,
