@@ -26,15 +26,16 @@ public class DashboardRepository : IDashboardRepository
         var devices = await _db.DeviceCredentials
             .Where(d => d.OwnerUserId == userId)
             .ToListAsync();
+        
+        var deviceIds = devices.Select(d => d.NetworkDeviceId).ToList();
 
         var rules = await _db.Rules
-            .Where(r => r.UserId == userId)
+            .Where(r => r.UserId != null && r.UserId.Value == userId)
             .ToListAsync();
 
         var today = DateTime.UtcNow.Date;
         var commandsToday = await _db.CommandLogs
-            .Where(c => c.CreatedAt >= today &&
-                       devices.Select(d => d.NetworkDeviceId).Contains(c.DeviceId))
+            .Where(c => c.CreatedAt >= today && deviceIds.Contains(c.DeviceId)))
             .ToListAsync();
 
         return new DashboardSummary(
