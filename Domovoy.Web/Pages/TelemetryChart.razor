@@ -91,6 +91,8 @@
     }
 </div>
 
+@implements IAsyncDisposable
+
 @code {
     [Parameter]
     [SupplyParameterFromQuery]
@@ -98,6 +100,8 @@
 
     private string selectedDeviceId = "";
     private bool isLoading;
+    private bool _disposed = false;                          // ← флаг disposed
+    private CancellationTokenSource? _cts;                   // ← для отмены async операций
 
     private class DeviceOption { public string Id { get; set; } = ""; public string Name { get; set; } = ""; }
     private class TelemetryPoint
@@ -117,63 +121,125 @@
     {
         if (!firstRender) return;
 
-        await LoadUserDevices();
+        _cts = new CancellationTokenSource();                // ← создаём токен
 
-        if (!string.IsNullOrEmpty(Id) && availableDevices.Any(d => d.Id == Id))
-            selectedDeviceId = Id;
-        else if (availableDevices.Count > 0)
-            selectedDeviceId = availableDevices[0].Id;
-
-        if (!string.IsNullOrEmpty(selectedDeviceId))
-            await LoadTelemetryHistory();
-
-        // Auto-refresh every 10 seconds
-        _refreshTimer = new System.Threading.Timer(async _ =>
+        try
         {
-            await InvokeAsync(async () =>
-            {
-                await LoadTelemetryHistory();
-                StateHasChanged();
-            });
-        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+            await LoadUserDevices();
 
-        StateHasChanged();
+            if (!string.IsNullOrEmpty(Id) && availableDevices.Any(d => d.Id == Id))
+                selectedDeviceId = Id;
+            else if (availableDevices.Count > 0)
+                selectedDeviceId = availableDevices[0].Id;
+
+            if (!string.IsNullOrEmpty(selectedDeviceId))
+                await LoadTelemetryHistory();
+
+            // Auto-refresh every 10 seconds
+            _refreshTimer = new System.Threading.Timer(async _ =>
+            {
+                // ПРОВЕРКА: компонент ещё жив?
+                if (_disposed || _cts?.Token.IsCancellationRequested == true)
+                    return;
+
+                try
+                {
+                    await InvokeAsync(async () =>
+                    {
+                        // ПОВТОРНАЯ проверка внутри InvokeAsync (защита от гонки)
+                        if (_disposed) return;
+
+                        await LoadTelemetryHistory();
+                        
+                        if (!_disposed)                      // ← только если не disposed
+                            StateHasChanged();
+                    });
+                }
+                catch (TaskCanceledException) { /* circuit разорван — нормально */ }
+                catch (ObjectDisposedException) { /* компонент уже удалён */ }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Telemetry] Timer error: {ex.Message}");
+                }
+            }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+
+            if (!_disposed) StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Telemetry] OnAfterRender error: {ex.Message}");
+        }
     }
 
-    public void Dispose()
+    // ← IAsyncDisposable вместо IDisposable
+    public async ValueTask DisposeAsync()
     {
-        _refreshTimer?.Dispose();
+        if (_disposed) return;
+        _disposed = true;
+
+        // 1. Отменяем все async операции
+        if (_cts != null)
+        {
+            await _cts.CancelAsync();
+            _cts.Dispose();
+            _cts = null;
+        }
+
+        // 2. Останавливаем таймер
+        if (_refreshTimer != null)
+        {
+            await _refreshTimer.DisposeAsync();
+            _refreshTimer = null;
+        }
+
+        // 3. Удаляем JS-объект графика (если JS ещё жив)
+        try
+        {
+            await JS.InvokeVoidAsync("eval", 
+                "if(window.__domovoyChart){window.__domovoyChart.destroy();window.__domovoyChart=null;}");
+        }
+        catch
+        {
+            // Игнорируем любые ошибки — circuit уже может быть разорван
+        }
     }
 
     private async Task LoadUserDevices()
     {
-        var mgmtJson = await Api.GetDevicesMgmtAsync();
-        if (mgmtJson.HasValue && mgmtJson.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
+        try
         {
-            availableDevices.Clear();
-            foreach (var item in mgmtJson.Value.EnumerateArray())
+            var mgmtJson = await Api.GetDevicesMgmtAsync();
+            if (mgmtJson.HasValue && mgmtJson.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
             {
-                var id   = item.TryGetProperty("networkDeviceId", out var p1) ? p1.GetString() ?? "" : "";
-                var name = item.TryGetProperty("name",            out var p2) ? p2.GetString() ?? id : id;
-                if (!string.IsNullOrEmpty(id))
-                    availableDevices.Add(new DeviceOption { Id = id, Name = name });
-            }
-        }
-
-        if (availableDevices.Count == 0)
-        {
-            var dashJson = await Api.GetDashboardDevicesAsync();
-            if (dashJson.HasValue && dashJson.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                foreach (var item in dashJson.Value.EnumerateArray())
+                availableDevices.Clear();
+                foreach (var item in mgmtJson.Value.EnumerateArray())
                 {
-                    var id   = item.TryGetProperty("deviceId", out var p1) || item.TryGetProperty("networkDeviceId", out p1)
-                                ? p1.GetString() ?? "" : "";
-                    var name = item.TryGetProperty("name", out var p2) ? p2.GetString() ?? id : id;
-                    if (!string.IsNullOrEmpty(id) && availableDevices.All(d => d.Id != id))
+                    var id   = item.TryGetProperty("networkDeviceId", out var p1) ? p1.GetString() ?? "" : "";
+                    var name = item.TryGetProperty("name",            out var p2) ? p2.GetString() ?? id : id;
+                    if (!string.IsNullOrEmpty(id))
                         availableDevices.Add(new DeviceOption { Id = id, Name = name });
                 }
             }
+
+            if (availableDevices.Count == 0)
+            {
+                var dashJson = await Api.GetDashboardDevicesAsync();
+                if (dashJson.HasValue && dashJson.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var item in dashJson.Value.EnumerateArray())
+                    {
+                        var id   = item.TryGetProperty("deviceId", out var p1) || item.TryGetProperty("networkDeviceId", out p1)
+                                    ? p1.GetString() ?? "" : "";
+                        var name = item.TryGetProperty("name", out var p2) ? p2.GetString() ?? id : id;
+                        if (!string.IsNullOrEmpty(id) && availableDevices.All(d => d.Id != id))
+                            availableDevices.Add(new DeviceOption { Id = id, Name = name });
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Telemetry] LoadUserDevices error: {ex.Message}");
         }
     }
 
@@ -187,124 +253,143 @@
 
     private async Task LoadTelemetryHistory()
     {
-        if (string.IsNullOrEmpty(selectedDeviceId)) return;
+        if (_disposed || string.IsNullOrEmpty(selectedDeviceId)) return;   // ← защита
 
         isLoading = true;
         telemetryPoints.Clear();
-        StateHasChanged();
+        if (!_disposed) StateHasChanged();
 
-        var historyJson = await Api.GetTelemetryHistoryAsync(selectedDeviceId);
-        if (historyJson.HasValue && historyJson.Value.ValueKind == System.Text.Json.JsonValueKind.Object)
+        try
         {
-            var root = historyJson.Value;
+            var historyJson = await Api.GetTelemetryHistoryAsync(selectedDeviceId);
+            if (_disposed) return;                                         // ← защита после await
 
-            System.Text.Json.JsonElement pointsEl = default;
-            bool hasPoints = root.TryGetProperty("points", out pointsEl) ||
-                             root.TryGetProperty("Points", out pointsEl);
-
-            if (hasPoints && pointsEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+            if (historyJson.HasValue && historyJson.Value.ValueKind == System.Text.Json.JsonValueKind.Object)
             {
-                foreach (var pt in pointsEl.EnumerateArray())
+                var root = historyJson.Value;
+
+                System.Text.Json.JsonElement pointsEl = default;
+                bool hasPoints = root.TryGetProperty("points", out pointsEl) ||
+                                 root.TryGetProperty("Points", out pointsEl);
+
+                if (hasPoints && pointsEl.ValueKind == System.Text.Json.JsonValueKind.Array)
                 {
-                    string ts = "";
-                    if (pt.TryGetProperty("timestamp", out var pTs) || pt.TryGetProperty("Timestamp", out pTs))
+                    foreach (var pt in pointsEl.EnumerateArray())
                     {
-                        // Format timestamp to readable HH:mm:ss
-                        if (pTs.TryGetDateTime(out var dtVal))
-                            ts = dtVal.ToLocalTime().ToString("HH:mm:ss");
-                        else
-                            ts = pTs.ToString();
-                    }
-
-                    string metricName = "value";
-                    string valueStr   = "";
-                    double numVal     = 0;
-
-                    if ((pt.TryGetProperty("data", out var dataEl) || pt.TryGetProperty("Data", out dataEl))
-                         && dataEl.ValueKind == System.Text.Json.JsonValueKind.Object)
-                    {
-                        foreach (var prop in dataEl.EnumerateObject())
+                        string ts = "";
+                        if (pt.TryGetProperty("timestamp", out var pTs) || pt.TryGetProperty("Timestamp", out pTs))
                         {
-                            metricName = prop.Name;
-                            valueStr   = prop.Value.ToString();
-                            if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Number)
-                                numVal = prop.Value.GetDouble();
-                            else if (double.TryParse(valueStr, System.Globalization.NumberStyles.Any,
-                                         System.Globalization.CultureInfo.InvariantCulture, out var parsed))
-                                numVal = parsed;
-                            break;
+                            if (pTs.TryGetDateTime(out var dtVal))
+                                ts = dtVal.ToLocalTime().ToString("HH:mm:ss");
+                            else
+                                ts = pTs.ToString();
                         }
-                    }
 
+                        string metricName = "value";
+                        string valueStr   = "";
+                        double numVal     = 0;
+
+                        if ((pt.TryGetProperty("data", out var dataEl) || pt.TryGetProperty("Data", out dataEl))
+                             && dataEl.ValueKind == System.Text.Json.JsonValueKind.Object)
+                        {
+                            foreach (var prop in dataEl.EnumerateObject())
+                            {
+                                metricName = prop.Name;
+                                valueStr   = prop.Value.ToString();
+                                if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Number)
+                                    numVal = prop.Value.GetDouble();
+                                else if (double.TryParse(valueStr, System.Globalization.NumberStyles.Any,
+                                             System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+                                    numVal = parsed;
+                                break;
+                            }
+                        }
+
+                        telemetryPoints.Add(new TelemetryPoint
+                        {
+                            Timestamp    = ts,
+                            MetricName   = metricName,
+                            Value        = valueStr,
+                            RawJson      = pt.GetRawText(),
+                            NumericValue = numVal
+                        });
+                    }
+                }
+            }
+
+            bool usingDemo = telemetryPoints.Count == 0;
+            if (usingDemo)
+            {
+                var baseTime = DateTime.UtcNow.AddMinutes(-28);
+                double[] demo = { 21.2, 21.5, 21.8, 22.0, 22.3, 22.1, 22.5, 22.7, 22.4, 22.8 };
+                for (int i = 0; i < demo.Length; i++)
+                {
                     telemetryPoints.Add(new TelemetryPoint
                     {
-                        Timestamp    = ts,
-                        MetricName   = metricName,
-                        Value        = valueStr,
-                        RawJson      = pt.GetRawText(),
-                        NumericValue = numVal
+                        Timestamp    = baseTime.AddMinutes(i * 3).ToLocalTime().ToString("HH:mm:ss"),
+                        MetricName   = "temperature (demo)",
+                        Value        = $"{demo[i]} C",
+                        RawJson      = $"{{\"temperature\": {demo[i]}, \"humidity\": 45}}",
+                        NumericValue = demo[i]
                     });
                 }
             }
-        }
 
-        bool usingDemo = telemetryPoints.Count == 0;
-        if (usingDemo)
-        {
-            var baseTime = DateTime.UtcNow.AddMinutes(-28);
-            double[] demo = { 21.2, 21.5, 21.8, 22.0, 22.3, 22.1, 22.5, 22.7, 22.4, 22.8 };
-            for (int i = 0; i < demo.Length; i++)
-            {
-                telemetryPoints.Add(new TelemetryPoint
-                {
-                    Timestamp    = baseTime.AddMinutes(i * 3).ToLocalTime().ToString("HH:mm:ss"),
-                    MetricName   = "temperature (demo)",
-                    Value        = $"{demo[i]} C",
-                    RawJson      = $"{{\"temperature\": {demo[i]}, \"humidity\": 45}}",
-                    NumericValue = demo[i]
-                });
-            }
-        }
+            isLoading = false;
 
-        isLoading = false;
+            if (_disposed) return;                                         // ← защита перед JS
 
-        var labels = System.Text.Json.JsonSerializer.Serialize(telemetryPoints.Select(p => p.Timestamp).ToList());
-        var values = System.Text.Json.JsonSerializer.Serialize(telemetryPoints.Select(p => p.NumericValue).ToList());
-        var deviceLabel = System.Text.Json.JsonSerializer.Serialize(selectedDeviceId);
-        var demoLabel = usingDemo ? " (demo — no real data yet)" : "";
+            var labels = System.Text.Json.JsonSerializer.Serialize(telemetryPoints.Select(p => p.Timestamp).ToList());
+            var values = System.Text.Json.JsonSerializer.Serialize(telemetryPoints.Select(p => p.NumericValue).ToList());
+            var deviceLabel = System.Text.Json.JsonSerializer.Serialize(selectedDeviceId);
+            var demoLabel = usingDemo ? " (demo — no real data yet)" : "";
 
-        var script = $@"(function() {{
-            var ctx = document.getElementById('telemetryChartCanvas');
-            if (!ctx) return;
-            if (window.__domovoyChart) {{ window.__domovoyChart.destroy(); }}
-            window.__domovoyChart = new Chart(ctx, {{
-                type: 'line',
-                data: {{
-                    labels: {labels},
-                    datasets: [{{
-                        label: 'Telemetry — ' + {deviceLabel} + '{demoLabel}',
-                        data: {values},
-                        borderColor: '#06b6d4',
-                        backgroundColor: 'rgba(6,182,212,0.12)',
-                        fill: true,
-                        tension: 0.4,
-                        pointRadius: 5,
-                        pointHoverRadius: 8,
-                        pointBackgroundColor: '#06b6d4'
-                    }}]
-                }},
-                options: {{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {{ legend: {{ labels: {{ color: '#f8fafc' }} }} }},
-                    scales: {{
-                        x: {{ ticks: {{ color: '#94a3b8' }}, grid: {{ color: 'rgba(255,255,255,0.05)' }} }},
-                        y: {{ ticks: {{ color: '#94a3b8' }}, grid: {{ color: 'rgba(255,255,255,0.05)' }} }}
+            var script = $@"(function() {{
+                var ctx = document.getElementById('telemetryChartCanvas');
+                if (!ctx) return;
+                if (window.__domovoyChart) {{ window.__domovoyChart.destroy(); }}
+                window.__domovoyChart = new Chart(ctx, {{
+                    type: 'line',
+                    data: {{
+                        labels: {labels},
+                        datasets: [{{
+                            label: 'Telemetry — ' + {deviceLabel} + '{demoLabel}',
+                            data: {values},
+                            borderColor: '#06b6d4',
+                            backgroundColor: 'rgba(6,182,212,0.12)',
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 5,
+                            pointHoverRadius: 8,
+                            pointBackgroundColor: '#06b6d4'
+                        }}]
+                    }},
+                    options: {{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {{ legend: {{ labels: {{ color: '#f8fafc' }} }} }},
+                        scales: {{
+                            x: {{ ticks: {{ color: '#94a3b8' }}, grid: {{ color: 'rgba(255,255,255,0.05)' }} }},
+                            y: {{ ticks: {{ color: '#94a3b8' }}, grid: {{ color: 'rgba(255,255,255,0.05)' }} }}
+                        }}
                     }}
-                }}
-            }});
-        }})();";
+                }});
+            }})();";
 
-        await JS.InvokeVoidAsync("eval", script);
+            // ← ЗАЩИТА: оборачиваем JSInterop в try-catch
+            try
+            {
+                await JS.InvokeVoidAsync("eval", script);
+            }
+            catch (TaskCanceledException) { /* circuit разорван */ }
+            catch (JSException) { /* JS-окружение недоступно */ }
+            catch (InvalidOperationException) { /* circuit disconnected */ }
+            catch (ObjectDisposedException) { /* компонент удалён */ }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Telemetry] LoadTelemetryHistory error: {ex.Message}");
+            isLoading = false;
+        }
     }
 }
